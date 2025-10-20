@@ -6,7 +6,7 @@
 //
 import SwiftUI
 
-// Represents a single line/task
+// MARK: - Task Line
 struct TaskLine: Identifiable {
     let id = UUID()
     var text: String
@@ -19,6 +19,7 @@ enum TaskStatus {
     case processed      // Successfully processed
 }
 
+// MARK: - Content View
 struct ContentView: View {
     @State private var selectedTab = 0
     
@@ -26,20 +27,54 @@ struct ContentView: View {
         TabView(selection: $selectedTab) {
             HomeView()
                 .tabItem {
-                    Label("Home", systemImage: "house.fill")
+                    Label("Add", systemImage: "plus.circle.fill")
                 }
                 .tag(0)
             
             CalendarView()
                 .tabItem {
-                    Label("Calendar", systemImage: "calendar")
+                    Label("Sched", systemImage: "calendar")
                 }
                 .tag(1)
+            
+            DueView()
+                .tabItem {
+                    Label("Due", systemImage: "checklist")
+                }
+                .tag(2)
         }
     }
 }
 
-// Home View - the notes input screen
+// MARK: - Due View
+struct DueView: View {
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Divider()
+                
+                ScrollView {
+                    VStack(spacing: 16) {
+                        Text("Due List View")
+                            .font(.title2)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 40)
+                        
+                        Text("Tasks and events will appear here in list format")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
+                    }
+                }
+            }
+            .navigationTitle("Due")
+            .navigationBarTitleDisplayMode(.large)
+        }
+    }
+}
+
+// MARK: - Home View
 struct HomeView: View {
     @State private var lines: [TaskLine] = [TaskLine(text: "")]
     @FocusState private var focusedLineId: UUID?
@@ -154,11 +189,6 @@ struct HomeView: View {
            currentIndex > 0 {
             let previousLine = lines[currentIndex - 1]
             
-            // Delete current empty line
-//            withAnimation {
-//                lines.remove(at: currentIndex)
-//            }
-            
             // If previous line is processed, make it editable
             if previousLine.status == .processed {
                 handleEdit(previousLine)
@@ -170,7 +200,7 @@ struct HomeView: View {
     }
 }
 
-// Individual line row
+// MARK: - Task Line Row
 struct TaskLineRow: View {
     @Binding var line: TaskLine
     let isFocused: Bool
@@ -266,7 +296,7 @@ struct TaskLineRow: View {
     }
 }
 
-// Calendar View with sticky header
+// MARK: - Calendar View
 struct CalendarView: View {
     @State private var currentVisibleMonth = Date()
     @State private var scrollOffset: CGFloat = 0
@@ -296,6 +326,11 @@ struct CalendarView: View {
     private var totalMonths: Int {
         let components = calendar.dateComponents([.month], from: startDate, to: endDate)
         return (components.month ?? 0) + 1
+    }
+    
+    // Check if currently viewing today's month
+    private var isViewingCurrentMonth: Bool {
+        calendar.isDate(currentVisibleMonth, equalTo: Date(), toGranularity: .month)
     }
     
     var body: some View {
@@ -334,21 +369,24 @@ struct CalendarView: View {
                             // Generate all months from 2000 to 2030
                             ForEach(0..<totalMonths, id: \.self) { monthIndex in
                                 if let monthDate = calendar.date(byAdding: .month, value: monthIndex, to: startDate) {
-                                    MonthView(date: monthDate)
-                                        .id(monthIndex)
-                                        .background(
-                                            GeometryReader { geo in
-                                                Color.clear
-                                                    .onChange(of: geo.frame(in: .named("scroll")).minY) { oldValue, newValue in
-                                                        // Check if this month is near the top of the scroll view
-                                                        if newValue > -50 && newValue < 150 {
-                                                            if !calendar.isDate(currentVisibleMonth, equalTo: monthDate, toGranularity: .month) {
-                                                                currentVisibleMonth = monthDate
-                                                            }
+                                    MonthView(
+                                        date: monthDate,
+                                        isFullyVisible: calendar.isDate(currentVisibleMonth, equalTo: monthDate, toGranularity: .month)
+                                    )
+                                    .id(monthIndex)
+                                    .background(
+                                        GeometryReader { geo in
+                                            Color.clear
+                                                .onChange(of: geo.frame(in: .named("scroll")).minY) { oldValue, newValue in
+                                                    // Check if this month is near the top of the scroll view
+                                                    if newValue > -50 && newValue < 150 {
+                                                        if !calendar.isDate(currentVisibleMonth, equalTo: monthDate, toGranularity: .month) {
+                                                            currentVisibleMonth = monthDate
                                                         }
                                                     }
-                                            }
-                                        )
+                                                }
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -356,30 +394,35 @@ struct CalendarView: View {
                     }
                     .coordinateSpace(name: "scroll")
                     .onAppear {
-                        // Scroll to current month on appear
-                        scrollToToday(proxy: proxy)
-                    }
-                    .overlay(alignment: .bottom) {
-                        // Today button
-                        Button(action: {
-                            scrollToToday(proxy: proxy)
-                        }) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "calendar.circle.fill")
-                                    .font(.body)
-                                Text("Today")
-                                    .fontWeight(.semibold)
+                                // Delay to ensure ScrollView is ready
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    scrollToToday(proxy: proxy)
+                                }
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                            .background(
-                                Capsule()
-                                    .fill(Color.blue)
-                                    .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
-                            )
+                    .overlay(alignment: .bottom) {
+                        // Today button - only show when not viewing current month
+                        if !isViewingCurrentMonth {
+                            Button(action: {
+                                scrollToToday(proxy: proxy)
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "calendar.circle.fill")
+                                        .font(.body)
+                                    Text("Today")
+                                        .fontWeight(.semibold)
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.blue)
+                                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                                )
+                            }
+                            .padding(.bottom, 20)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
-                        .padding(.bottom, 20)
                     }
                 }
             }
@@ -403,9 +446,10 @@ struct CalendarView: View {
     }
 }
 
-// Individual month view (simplified - no header)
+// MARK: - Month View
 struct MonthView: View {
     let date: Date
+    let isFullyVisible: Bool
     
     private let calendar = Calendar.current
     
@@ -416,12 +460,13 @@ struct MonthView: View {
                     DayCell(
                         date: cellDate,
                         isToday: isToday(cellDate),
-                        isCurrentMonth: isCurrentMonth(cellDate)
+                        isCurrentMonth: isCurrentMonth(cellDate),
+                        isFullyVisible: isFullyVisible
                     )
                 } else {
                     // Empty cell
                     Color.clear
-                        .frame(height: 44)
+                        .frame(height: 80)
                 }
             }
         }
@@ -464,11 +509,12 @@ struct MonthView: View {
     }
 }
 
-// Individual day cell in calendar
+// MARK: - Day Cell
 struct DayCell: View {
     let date: Date
     let isToday: Bool
     let isCurrentMonth: Bool
+    let isFullyVisible: Bool
     
     private var dayNumber: String {
         let formatter = DateFormatter()
@@ -477,7 +523,15 @@ struct DayCell: View {
     }
     
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 0) {
+            // Top border line
+            Rectangle()
+                .fill(Color(.separator))
+                .frame(height: 1)
+            
+            Spacer()
+            
+            // Day number
             ZStack {
                 // Today circle background
                 if isToday {
@@ -486,25 +540,39 @@ struct DayCell: View {
                         .frame(width: 36, height: 36)
                 }
                 
-                // Day number
                 Text(dayNumber)
                     .font(.body)
                     .fontWeight(isToday ? .bold : .regular)
-                    .foregroundColor(isToday ? .white : (isCurrentMonth ? .primary : .secondary))
+                    .foregroundColor(textColor)
             }
             .frame(height: 36)
             
-            // Placeholder for event indicator dots
-            HStack(spacing: 2) {
-                // TODO: Show dots for events on this day
-                // Example: Circle().fill(Color.blue).frame(width: 4, height: 4)
+            Spacer()
+            
+            // Event area (placeholder for now)
+            VStack(spacing: 2) {
+                // TODO: Show event dots or list here
             }
-            .frame(height: 4)
+            .frame(minHeight: 20)
         }
         .frame(maxWidth: .infinity)
+        .frame(height: 80)
+    }
+    
+    private var textColor: Color {
+        if isToday {
+            return .white
+        } else if !isCurrentMonth {
+            return .secondary
+        } else if isFullyVisible {
+            return .primary
+        } else {
+            return Color.primary.opacity(0.4)
+        }
     }
 }
 
+// MARK: - #Preview
 #Preview {
     ContentView()
 }
