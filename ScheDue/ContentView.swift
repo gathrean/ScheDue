@@ -15,8 +15,13 @@ struct AppTheme {
     static let textPrimary = Color.primary
     static let textSecondary = Color.secondary
     
-    // Fonts - CHANGE HERE TO AFFECT ENTIRE APP
-    static let fontDesign: Font.Design = .default  // Change to .serif, .rounded, .monospaced
+    // Fonts
+    static let fontDesign: Font.Design = .default  // Body text font
+    
+    // Header font helper
+    static func headerFont(size: CGFloat, weight: Font.Weight = .bold) -> Font {
+        return .custom("InstrumentSerif-Regular", size: size)
+    }
     
     // Spacing
     static let paddingHorizontal: CGFloat = 20
@@ -149,18 +154,23 @@ struct HomeView: View {
                         }
                     }
                 }
-                .background(AppTheme.background)
-            }
-            .navigationTitle("ScheDue")
-            .navigationBarTitleDisplayMode(.large)
-            .background(AppTheme.background)
-            .onAppear {
-                if let firstLine = lines.first {
-                    focusedLineId = firstLine.id
-                }
-            }
-        }
-    }
+                                .background(AppTheme.background)
+                            }
+                            .navigationBarTitleDisplayMode(.inline)
+                            .toolbar {
+                                ToolbarItem(placement: .principal) {
+                                    Text("ScheDue")
+                                        .font(AppTheme.headerFont(size: 28))
+                                }
+                            }
+                            .background(AppTheme.background)
+                            .onAppear {
+                                if let firstLine = lines.first {
+                                    focusedLineId = firstLine.id
+                                }
+                            }
+                        }
+                    }
     
     func handleLineSubmit(_ line: TaskLine) {
             guard !line.text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
@@ -357,7 +367,7 @@ struct CalendarView: View {
             VStack(spacing: 0) {
                 VStack(spacing: 12) {
                     Text(monthYearString)
-                        .appFont(size: 34, weight: .bold)
+                        .font(AppTheme.headerFont(size: 34))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, AppTheme.paddingHorizontal)
                         .padding(.top, 20)
@@ -595,8 +605,13 @@ struct DueView: View {
                 }
                 .background(AppTheme.background)
             }
-            .navigationTitle("Due")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Due")
+                        .font(AppTheme.headerFont(size: 28))
+                }
+            }
             .background(AppTheme.background)
         }
     }
