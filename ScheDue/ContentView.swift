@@ -76,250 +76,11 @@ extension Color {
     }
 }
 
-// MARK: - Task Line
-struct TaskLine: Identifiable {
-    let id = UUID()
-    var text: String
-    var status: TaskStatus = .editing
-}
-
-enum TaskStatus {
-    case editing        // User is typing
-    case processing     // Being parsed
-    case processed      // Successfully processed
-}
-
 // MARK: - Content View
 struct ContentView: View {
-    @State private var selectedTab = 0
-    
     var body: some View {
-        TabView(selection: $selectedTab) {
-            HomeView()
-                .tabItem {
-                    Label("Add", systemImage: "plus.circle.fill")
-                }
-                .tag(0)
-            
-            CalendarView()
-                .tabItem {
-                    Label("Sched", systemImage: "calendar")
-                }
-                .tag(1)
-            
-            DueView()
-                .tabItem {
-                    Label("Due", systemImage: "checklist")
-                }
-                .tag(2)
-        }
-    }
-}
-
-// MARK: - Home View
-struct HomeView: View {
-    @State private var lines: [TaskLine] = [TaskLine(text: "")]
-    @FocusState private var focusedLineId: UUID?
-    
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                Divider()
-                
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach($lines) { $line in
-                            TaskLineRow(
-                                line: $line,
-                                isFocused: focusedLineId == line.id,
-                                onSubmit: {
-                                    handleLineSubmit(line)
-                                },
-                                onFocus: {
-                                    focusedLineId = line.id
-                                },
-                                onInfoTap: {
-                                    handleInfoTap(line)
-                                },
-                                onEdit: {
-                                    handleEdit(line)
-                                },
-                                onDelete: {
-                                    handleDelete(line)
-                                },
-                                onBackspaceOnEmpty: {
-                                    handleBackspaceOnEmpty(line)
-                                }
-                            )
-                        }
-                    }
-                }
-                                .background(AppTheme.background)
-                            }
-                            .navigationBarTitleDisplayMode(.inline)
-                            .toolbar {
-                                ToolbarItem(placement: .principal) {
-                                    Text("ScheDue")
-                                        .font(AppTheme.headerFont(size: 28))
-                                }
-                            }
-                            .background(AppTheme.background)
-                            .onAppear {
-                                if let firstLine = lines.first {
-                                    focusedLineId = firstLine.id
-                                }
-                            }
-                        }
-                    }
-    
-    func handleLineSubmit(_ line: TaskLine) {
-            guard !line.text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-            
-            if let index = lines.firstIndex(where: { $0.id == line.id }) {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    lines[index].status = .processing
-                }
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    if let idx = lines.firstIndex(where: { $0.id == line.id }) {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                            lines[idx].status = .processed
-                        }
-                    }
-                }
-                
-                lines.removeAll { $0.text.isEmpty && $0.status == .editing }
-                
-                let newLine = TaskLine(text: "")
-                lines.append(newLine)
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    focusedLineId = newLine.id
-                }
-            }
-        }
-        
-        func handleInfoTap(_ line: TaskLine) {
-            print("ℹ️ Info tapped for: \(line.text)")
-        }
-        
-        func handleEdit(_ line: TaskLine) {
-            if let index = lines.firstIndex(where: { $0.id == line.id }) {
-                lines.removeAll { $0.text.isEmpty && $0.status == .editing }
-                
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    lines[index].status = .editing
-                }
-                focusedLineId = line.id
-            }
-        }
-        
-        func handleDelete(_ line: TaskLine) {
-            withAnimation {
-                lines.removeAll { $0.id == line.id }
-                
-                if !lines.contains(where: { $0.text.isEmpty && $0.status == .editing }) {
-                    let newLine = TaskLine(text: "")
-                    lines.append(newLine)
-                    focusedLineId = newLine.id
-                }
-            }
-        }
-        
-        func handleBackspaceOnEmpty(_ line: TaskLine) {
-            if let currentIndex = lines.firstIndex(where: { $0.id == line.id }),
-               currentIndex > 0 {
-                let previousLine = lines[currentIndex - 1]
-                
-                if previousLine.status == .processed {
-                    handleEdit(previousLine)
-                } else {
-                    focusedLineId = previousLine.id
-                }
-            }
-        }
-    }
-
-// MARK: - Task Line Row
-struct TaskLineRow: View {
-    @Binding var line: TaskLine
-    let isFocused: Bool
-    let onSubmit: () -> Void
-    let onFocus: () -> Void
-    let onInfoTap: () -> Void
-    let onEdit: () -> Void
-    let onDelete: () -> Void
-    let onBackspaceOnEmpty: () -> Void
-    
-    @FocusState private var isTextFieldFocused: Bool
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            TextField("What's coming up next?", text: $line.text)
-                .appFont(size: 17)
-                .foregroundColor(lineTextColor)
-                .disabled(line.status != .editing)
-                .focused($isTextFieldFocused)
-                .onSubmit {
-                    onSubmit()
-                }
-                .onChange(of: isTextFieldFocused) { _, newValue in
-                    if newValue {
-                        onFocus()
-                    }
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    if line.status == .processed {
-                        onEdit()
-                    }
-                }
-            
-            HStack(spacing: 8) {
-                if line.status == .processing {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                        .transition(.scale.combined(with: .opacity))
-                } else if line.status == .processed {
-                    Button(action: onInfoTap) {
-                        Image(systemName: "info.circle.fill")
-                            .foregroundColor(AppTheme.accentBlue)
-                            .font(.title3)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .transition(.scale.combined(with: .opacity))
-                }
-            }
-            .frame(width: 30)
-        }
-        .padding(.horizontal, AppTheme.paddingHorizontal)
-        .padding(.vertical, AppTheme.paddingVertical)
-        .background(backgroundColor)
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            if line.status == .processed {
-                Button(role: .destructive) {
-                    onDelete()
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-            }
-        }
-        .onChange(of: isFocused) { _, newValue in
-            isTextFieldFocused = newValue
-        }
-    }
-    
-    private var lineTextColor: Color {
-        switch line.status {
-        case .editing:
-            return AppTheme.textPrimary
-        case .processing, .processed:
-            return AppTheme.textSecondary
-        }
-    }
-    
-    private var backgroundColor: Color {
-        line.status == .processed ? AppTheme.cardBackground : Color.clear
+        CalendarView()
+            .preferredColorScheme(.light)
     }
 }
 
@@ -327,6 +88,11 @@ struct TaskLineRow: View {
 struct CalendarView: View {
     @State private var currentVisibleMonth = Date()
     @State private var hasScrolledToToday = false
+    @State private var showQuickAdd = false
+    @State private var toastMessage: String?
+    @State private var newEventDate: Date?
+    @State private var sheetDetent: PresentationDetent = .fraction(0.33)
+    @State private var scrollToTodayTrigger = false
     
     private let calendar = Calendar.current
     private let daysOfWeek = ["S", "M", "T", "W", "T", "F", "S"]
@@ -363,113 +129,204 @@ struct CalendarView: View {
     }
     
     var body: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    Text(monthYearString)
-                        .font(AppTheme.headerFont(size: 34))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, AppTheme.paddingHorizontal)
-                        .padding(.top, 20)
-                    
-                    HStack(spacing: 0) {
-                        ForEach(daysOfWeek, id: \.self) { day in
-                            Text(day)
-                                .appFont(size: 12, weight: .semibold)
-                                .foregroundColor(AppTheme.textSecondary)
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .padding(.horizontal, AppTheme.paddingHorizontal)
-                    .padding(.bottom, 8)
-                }
-                .background(AppTheme.background)
-                
-                Divider()
-                
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(0..<totalMonths, id: \.self) { monthIndex in
-                                if let monthDate = calendar.date(byAdding: .month, value: monthIndex, to: startDate) {
-                                    MonthView(
-                                        date: monthDate,
-                                        isFullyVisible: calendar.isDate(currentVisibleMonth, equalTo: monthDate, toGranularity: .month)
-                                    )
-                                    .id(monthIndex)
-                                    .background(
-                                        GeometryReader { geo in
-                                            Color.clear
-                                                .onChange(of: geo.frame(in: .named("scroll")).minY) { oldValue, newValue in
-                                                    if newValue > -50 && newValue < 150 {
-                                                        if !calendar.isDate(currentVisibleMonth, equalTo: monthDate, toGranularity: .month) {
-                                                            currentVisibleMonth = monthDate
-                                                        }
-                                                    }
-                                                }
-                                        }
-                                    )
-                                }
+            ZStack(alignment: .bottom) {
+                VStack(spacing: 0) {
+                    VStack(spacing: 12) {
+                        Text(monthYearString)
+                            .font(AppTheme.headerFont(size: 34))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, AppTheme.paddingHorizontal)
+                            .padding(.top, 20)
+                        
+                        HStack(spacing: 0) {
+                            ForEach(daysOfWeek, id: \.self) { day in
+                                Text(day)
+                                    .appFont(size: 12, weight: .semibold)
+                                    .foregroundColor(AppTheme.textSecondary)
+                                    .frame(maxWidth: .infinity)
                             }
                         }
-                        .padding(.vertical, 20)
+                        .padding(.horizontal, AppTheme.paddingHorizontal)
+                        .padding(.bottom, 8)
                     }
                     .background(AppTheme.background)
-                    .coordinateSpace(name: "scroll")
-                    .onAppear {
-                        // Only scroll once on first appear
-                        if !hasScrolledToToday {
-                            proxy.scrollTo(todayMonthIndex, anchor: .top)
-                            hasScrolledToToday = true
-                            currentVisibleMonth = Date()
-                        }
-                    }
-                    .overlay(alignment: .bottom) {
-                        if !isViewingCurrentMonth {
-                            Button(action: {
-                                scrollToToday(proxy: proxy)
-                            }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "calendar.circle.fill")
-                                        .font(.body)
-                                    Text("Today")
-                                        .appFont(size: 16, weight: .semibold)
+                    
+                    Divider()
+                    
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(spacing: 0) {
+                                ForEach(0..<totalMonths, id: \.self) { monthIndex in
+                                    if let monthDate = calendar.date(byAdding: .month, value: monthIndex, to: startDate) {
+                                        MonthView(
+                                            date: monthDate,
+                                            isFullyVisible: calendar.isDate(currentVisibleMonth, equalTo: monthDate, toGranularity: .month),
+                                            highlightedDate: newEventDate
+                                        )
+                                        .id(monthIndex)
+                                        .background(
+                                            GeometryReader { geo in
+                                                Color.clear
+                                                    .onChange(of: geo.frame(in: .named("scroll")).minY) { oldValue, newValue in
+                                                        if newValue > -50 && newValue < 150 {
+                                                            if !calendar.isDate(currentVisibleMonth, equalTo: monthDate, toGranularity: .month) {
+                                                                currentVisibleMonth = monthDate
+                                                            }
+                                                        }
+                                                    }
+                                            }
+                                        )
+                                    }
                                 }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, AppTheme.paddingHorizontal)
-                                .padding(.vertical, AppTheme.paddingVertical)
-                                .background(
-                                    Capsule()
-                                        .fill(AppTheme.accentBlue)
-                                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
-                                )
                             }
-                            .padding(.bottom, 20)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .padding(.vertical, 20)
+                        }
+                        .background(AppTheme.background)
+                        .coordinateSpace(name: "scroll")
+                        .onAppear {
+                            if !hasScrolledToToday {
+                                proxy.scrollTo(todayMonthIndex, anchor: .top)
+                                hasScrolledToToday = true
+                                currentVisibleMonth = Date()
+                            }
+                        }
+                        .onChange(of: newEventDate) { oldValue, newValue in
+                            if let eventDate = newValue {
+                                scrollToDate(eventDate, proxy: proxy)
+                            }
+                        }
+                        .onChange(of: scrollToTodayTrigger) { _, _ in
+                            scrollToToday(proxy: proxy)
                         }
                     }
+                }
+                
+                // Bottom buttons row
+                HStack {
+                    // Today button (bottom left)
+                    if !isViewingCurrentMonth {
+                        Button(action: {
+                            scrollToTodayTrigger.toggle()
+                        }) {
+                            HStack(spacing: 8) {
+                                Text("Today")
+                                    .appFont(size: 24, weight: .semibold)
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, AppTheme.paddingHorizontal)
+                            .padding(.vertical, AppTheme.paddingVertical)
+                            .background(
+                                Capsule()
+                                    .fill(AppTheme.accentBlue)
+                                    .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                            )
+                        }
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .bottom).combined(with: .scale(scale: 0.9)),
+                            removal: .move(edge: .bottom).combined(with: .opacity)
+                        ))
+                        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: isViewingCurrentMonth)
+                    }
+                    
+                    Spacer()
+                    
+                    // Floating Action Button (bottom right)
+                    Button(action: {
+                        showQuickAdd = true
+                    }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 56, height: 56)
+                            .background(
+                                Circle()
+                                    .fill(AppTheme.accentBlue)
+                                    .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+                            )
+                    }
+                }
+                .animation(.spring(response: 0.4, dampingFraction: 0.7), value: isViewingCurrentMonth)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
+                
+                // Toast notification
+                if let message = toastMessage {
+                    VStack {
+                        Spacer()
+                        ToastView(message: message)
+                            .padding(.bottom, 100)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
+                }
+            }
+            .sheet(isPresented: $showQuickAdd) {
+                QuickAddSheet(
+                    sheetDetent: $sheetDetent,
+                    onEventAdded: { date, eventText in
+                        handleEventAdded(date: date, text: eventText)
+                    }
+                )
+                .presentationDetents([.fraction(0.33), .large], selection: $sheetDetent)
+                .presentationDragIndicator(.visible)
+                .presentationBackgroundInteraction(.enabled(upThrough: .large))
+            }
+        }
+        
+        private var monthYearString: String {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMMM yyyy"
+            return formatter.string(from: currentVisibleMonth)
+        }
+        
+        private func scrollToToday(proxy: ScrollViewProxy) {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                proxy.scrollTo(todayMonthIndex, anchor: .top)
+            }
+        }
+        
+        private func scrollToDate(_ date: Date, proxy: ScrollViewProxy) {
+            let components = calendar.dateComponents([.month], from: startDate, to: date)
+            if let monthOffset = components.month {
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    proxy.scrollTo(monthOffset, anchor: .top)
+                }
+            }
+        }
+        
+        private func handleEventAdded(date: Date, text: String) {
+            // Highlight the date with animation
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                newEventDate = date
+            }
+            
+            // Show toast
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d"
+            toastMessage = "Added to \(formatter.string(from: date))"
+            
+            // Clear toast after 2 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                withAnimation {
+                    toastMessage = nil
+                }
+            }
+            
+            // Clear highlight after 3 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                withAnimation {
+                    newEventDate = nil
                 }
             }
         }
     }
-    
-    private var monthYearString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM yyyy"
-        return formatter.string(from: currentVisibleMonth)
-    }
-    
-    private func scrollToToday(proxy: ScrollViewProxy) {
-        withAnimation(.easeInOut(duration: 0.5)) {
-            proxy.scrollTo(todayMonthIndex, anchor: .top)
-        }
-    }
-}
 
 // MARK: - Month View
 struct MonthView: View {
     let date: Date
     let isFullyVisible: Bool
+    let highlightedDate: Date?
     
     private let calendar = Calendar.current
     
@@ -481,7 +338,8 @@ struct MonthView: View {
                         date: cellDate,
                         isToday: isToday(cellDate),
                         isCurrentMonth: isCurrentMonth(cellDate),
-                        isFullyVisible: isFullyVisible
+                        isFullyVisible: isFullyVisible,
+                        isHighlighted: isHighlighted(cellDate)
                     )
                 } else {
                     Color.clear
@@ -522,7 +380,12 @@ struct MonthView: View {
     private func isCurrentMonth(_ checkDate: Date) -> Bool {
         calendar.isDate(checkDate, equalTo: date, toGranularity: .month)
     }
-}
+    
+    private func isHighlighted(_ checkDate: Date) -> Bool {
+            guard let highlightedDate = highlightedDate else { return false }
+            return calendar.isDate(checkDate, inSameDayAs: highlightedDate)
+        }
+    }
 
 // MARK: - Day Cell
 struct DayCell: View {
@@ -530,6 +393,9 @@ struct DayCell: View {
     let isToday: Bool
     let isCurrentMonth: Bool
     let isFullyVisible: Bool
+    let isHighlighted: Bool
+    
+    @State private var showDot = false
     
     private var dayNumber: String {
         let formatter = DateFormatter()
@@ -561,12 +427,24 @@ struct DayCell: View {
             Spacer()
             
             VStack(spacing: 2) {
-                // TODO: Show event dots or list here
+                if showDot {
+                    Circle()
+                        .fill(AppTheme.accentBlue)
+                        .frame(width: 6, height: 6)
+                        .transition(.scale.combined(with: .opacity))
+                }
             }
             .frame(minHeight: 20)
         }
         .frame(maxWidth: .infinity)
         .frame(height: AppTheme.dayCellHeight)
+        .onChange(of: isHighlighted) { oldValue, newValue in
+            if newValue {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    showDot = true
+                }
+            }
+        }
     }
     
     private var textColor: Color {
@@ -582,38 +460,178 @@ struct DayCell: View {
     }
 }
 
-// MARK: - Due View
-struct DueView: View {
+// MARK: - Toast View
+struct ToastView: View {
+    let message: String
+    
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                Divider()
-                
-                ScrollView {
-                    VStack(spacing: 16) {
-                        Text("Due List View")
-                            .appFont(size: 22, weight: .semibold)
-                            .foregroundColor(AppTheme.textSecondary)
-                            .padding(.top, 40)
-                        
-                        Text("Tasks and events will appear here in list format")
-                            .appFont(size: 17)
-                            .foregroundColor(AppTheme.textSecondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 40)
+        Text(message)
+            .appFont(size: 15, weight: .medium)
+            .foregroundColor(.white)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.8))
+            )
+    }
+}
+
+// MARK: - Quick Add Sheet
+struct QuickAddSheet: View {
+    @Environment(\.dismiss) var dismiss
+    @Binding var sheetDetent: PresentationDetent
+    @State private var inputText = ""
+    @State private var parsedPreview: ParsedEvent?
+    @FocusState private var isTextFieldFocused: Bool
+    
+    let onEventAdded: (Date, String) -> Void
+    
+    private var isExpanded: Bool {
+        sheetDetent == .large
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Expand/Collapse button
+            HStack {
+                Spacer()
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        sheetDetent = isExpanded ? .fraction(0.33) : .large
                     }
+                }) {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.up")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(AppTheme.textSecondary)
+                        .frame(width: 30, height: 30)
                 }
-                .background(AppTheme.background)
+                .padding(.trailing, 16)
+                .padding(.top, 8)
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("Due")
-                        .font(AppTheme.headerFont(size: 28))
+            
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Parse preview (shown when expanded)
+                    if isExpanded, let preview = parsedPreview {
+                        ParsePreviewView(event: preview)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .padding(.horizontal, 20)
+                    }
+                    
+                    // Input field
+                    TextField("What's coming up next?", text: $inputText)
+                        .appFont(size: 17)
+                        .padding(16)
+                        .background(AppTheme.cardBackground)
+                        .cornerRadius(12)
+                        .focused($isTextFieldFocused)
+                        .onSubmit {
+                            handleSubmit()
+                        }
+                        .onChange(of: inputText) { oldValue, newValue in
+                            if !newValue.isEmpty {
+                                parsedPreview = parseText(newValue)
+                            } else {
+                                parsedPreview = nil
+                            }
+                        }
+                        .padding(.horizontal, 20)
                 }
+                .padding(.vertical, 16)
             }
-            .background(AppTheme.background)
         }
+        .background(AppTheme.background)
+        .interactiveDismissDisabled(false)
+        .onAppear {
+            isTextFieldFocused = true
+        }
+    }
+    
+    private func handleSubmit() {
+        guard !inputText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        
+        let event = parseText(inputText)
+        onEventAdded(event.date, inputText)
+        
+        inputText = ""
+        parsedPreview = nil
+        isTextFieldFocused = true
+    }
+    
+    private func parseText(_ text: String) -> ParsedEvent {
+        if text.lowercased().contains("tomorrow") {
+            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+            return ParsedEvent(
+                title: text,
+                date: tomorrow,
+                type: .event,
+                time: "2:00 PM"
+            )
+        }
+        
+        return ParsedEvent(
+            title: text,
+            date: Date(),
+            type: .event,
+            time: nil
+        )
+    }
+}
+
+// MARK: - Parsed Event Model
+struct ParsedEvent {
+    let title: String
+    let date: Date
+    let type: EventType
+    let time: String?
+    
+    enum EventType {
+        case event
+        case task
+    }
+}
+
+// MARK: - Parse Preview View
+struct ParsePreviewView: View {
+    let event: ParsedEvent
+    
+    private var dateString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter.string(from: event.date)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: event.type == .event ? "calendar" : "checkmark.circle")
+                    .foregroundColor(AppTheme.accentBlue)
+                Text(event.type == .event ? "Calendar Event" : "Task")
+                    .appFont(size: 14, weight: .medium)
+                    .foregroundColor(AppTheme.textSecondary)
+            }
+            
+            Text(event.title)
+                .appFont(size: 16, weight: .semibold)
+                .foregroundColor(AppTheme.textPrimary)
+            
+            HStack(spacing: 4) {
+                Text(dateString)
+                    .appFont(size: 14)
+                    .foregroundColor(AppTheme.textSecondary)
+                
+                if let time = event.time {
+                    Text("at \(time)")
+                        .appFont(size: 14)
+                        .foregroundColor(AppTheme.textSecondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(AppTheme.cardBackground)
+        .cornerRadius(12)
     }
 }
 
