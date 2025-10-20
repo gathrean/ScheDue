@@ -155,9 +155,9 @@ struct HomeView: View {
             let previousLine = lines[currentIndex - 1]
             
             // Delete current empty line
-            withAnimation {
-                lines.remove(at: currentIndex)
-            }
+//            withAnimation {
+//                lines.remove(at: currentIndex)
+//            }
             
             // If previous line is processed, make it editable
             if previousLine.status == .processed {
@@ -266,74 +266,167 @@ struct TaskLineRow: View {
     }
 }
 
-// Calendar View with vertical scrolling months
+// Calendar View with sticky header
 struct CalendarView: View {
-    @State private var currentDate = Date()
+    @State private var currentVisibleMonth = Date()
+    @State private var scrollOffset: CGFloat = 0
+    @Namespace private var scrollNamespace
     
     private let calendar = Calendar.current
     private let daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     
+    // Calculate month offset from year 2000
+    private var startDate: Date {
+        var components = DateComponents()
+        components.year = 2000
+        components.month = 1
+        components.day = 1
+        return calendar.date(from: components) ?? Date()
+    }
+    
+    private var endDate: Date {
+        var components = DateComponents()
+        components.year = 2030
+        components.month = 12
+        components.day = 31
+        return calendar.date(from: components) ?? Date()
+    }
+    
+    // Calculate total months between 2000 and 2030
+    private var totalMonths: Int {
+        let components = calendar.dateComponents([.month], from: startDate, to: endDate)
+        return (components.month ?? 0) + 1
+    }
+    
     var body: some View {
-        ScrollView {
-            VStack(spacing: 40) {
-                // Generate 12 months (6 before, current, 5 after)
-                ForEach(-6...5, id: \.self) { monthOffset in
-                    if let monthDate = calendar.date(byAdding: .month, value: monthOffset, to: currentDate) {
-                        MonthView(date: monthDate, daysOfWeek: daysOfWeek)
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 0) {
+                // Sticky header with month/year and days of week
+                VStack(spacing: 12) {
+                    // Month and Year - BIGGER
+                    Text(monthYearString)
+                        .font(.system(size: 34, weight: .bold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 20)
+                    
+                    // Days of week
+                    HStack(spacing: 0) {
+                        ForEach(daysOfWeek, id: \.self) { day in
+                            Text(day)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
+                }
+                .background(Color(.systemBackground))
+                
+                Divider()
+                
+                // Scrollable months with offset tracking
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            // Generate all months from 2000 to 2030
+                            ForEach(0..<totalMonths, id: \.self) { monthIndex in
+                                if let monthDate = calendar.date(byAdding: .month, value: monthIndex, to: startDate) {
+                                    MonthView(date: monthDate)
+                                        .id(monthIndex)
+                                        .background(
+                                            GeometryReader { geo in
+                                                Color.clear
+                                                    .onChange(of: geo.frame(in: .named("scroll")).minY) { oldValue, newValue in
+                                                        // Check if this month is near the top of the scroll view
+                                                        if newValue > -50 && newValue < 150 {
+                                                            if !calendar.isDate(currentVisibleMonth, equalTo: monthDate, toGranularity: .month) {
+                                                                currentVisibleMonth = monthDate
+                                                            }
+                                                        }
+                                                    }
+                                            }
+                                        )
+                                }
+                            }
+                        }
+                        .padding(.vertical, 20)
+                    }
+                    .coordinateSpace(name: "scroll")
+                    .onAppear {
+                        // Scroll to current month on appear
+                        scrollToToday(proxy: proxy)
+                    }
+                    .overlay(alignment: .bottom) {
+                        // Today button
+                        Button(action: {
+                            scrollToToday(proxy: proxy)
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "calendar.circle.fill")
+                                    .font(.body)
+                                Text("Today")
+                                    .fontWeight(.semibold)
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(
+                                Capsule()
+                                    .fill(Color.blue)
+                                    .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                            )
+                        }
+                        .padding(.bottom, 20)
                     }
                 }
             }
-            .padding(.vertical, 20)
+        }
+    }
+    
+    private var monthYearString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: currentVisibleMonth)
+    }
+    
+    private func scrollToToday(proxy: ScrollViewProxy) {
+        // Calculate the month index for today
+        let components = calendar.dateComponents([.month], from: startDate, to: Date())
+        if let monthOffset = components.month {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                proxy.scrollTo(monthOffset, anchor: .top)
+            }
         }
     }
 }
 
-// Individual month view
+// Individual month view (simplified - no header)
 struct MonthView: View {
     let date: Date
-    let daysOfWeek: [String]
     
     private let calendar = Calendar.current
     
     var body: some View {
-        VStack(spacing: 16) {
-            // Month and Year header
-            Text(monthYearString)
-                .font(.title2)
-                .fontWeight(.bold)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-            
-            // Days of week header
-            HStack(spacing: 0) {
-                ForEach(daysOfWeek, id: \.self) { day in
-                    Text(day)
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity)
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
+            ForEach(calendarDays, id: \.self) { cellDate in
+                if let cellDate = cellDate {
+                    DayCell(
+                        date: cellDate,
+                        isToday: isToday(cellDate),
+                        isCurrentMonth: isCurrentMonth(cellDate)
+                    )
+                } else {
+                    // Empty cell
+                    Color.clear
+                        .frame(height: 44)
                 }
             }
-            .padding(.horizontal, 20)
-            
-            // Calendar grid
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
-                ForEach(calendarDays, id: \.self) { cellDate in
-                    if let cellDate = cellDate {
-                        DayCell(
-                            date: cellDate,
-                            isToday: isToday(cellDate),
-                            isCurrentMonth: isCurrentMonth(cellDate)
-                        )
-                    } else {
-                        // Empty cell
-                        Color.clear
-                            .frame(height: 44)
-                    }
-                }
-            }
-            .padding(.horizontal, 20)
         }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 32)
     }
     
     private var calendarDays: [Date?] {
@@ -360,12 +453,6 @@ struct MonthView: View {
         }
         
         return days
-    }
-    
-    private var monthYearString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM yyyy"
-        return formatter.string(from: date)
     }
     
     private func isToday(_ checkDate: Date) -> Bool {
