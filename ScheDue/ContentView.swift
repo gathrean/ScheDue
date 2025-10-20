@@ -16,10 +16,31 @@ struct TaskLine: Identifiable {
 enum TaskStatus {
     case editing        // User is typing
     case processing     // Being parsed
-    case completed      // Successfully processed
+    case processed      // Successfully processed
 }
 
 struct ContentView: View {
+    @State private var selectedTab = 0
+    
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            HomeView()
+                .tabItem {
+                    Label("Home", systemImage: "house.fill")
+                }
+                .tag(0)
+            
+            CalendarView()
+                .tabItem {
+                    Label("Calendar", systemImage: "calendar")
+                }
+                .tag(1)
+        }
+    }
+}
+
+// Home View - the notes input screen
+struct HomeView: View {
     @State private var lines: [TaskLine] = [TaskLine(text: "")]
     @FocusState private var focusedLineId: UUID?
     
@@ -39,19 +60,27 @@ struct ContentView: View {
                                 },
                                 onFocus: {
                                     focusedLineId = line.id
+                                },
+                                onInfoTap: {
+                                    handleInfoTap(line)
+                                },
+                                onEdit: {
+                                    handleEdit(line)
+                                },
+                                onDelete: {
+                                    handleDelete(line)
+                                },
+                                onBackspaceOnEmpty: {
+                                    handleBackspaceOnEmpty(line)
                                 }
                             )
                         }
                     }
                 }
-                
-                // Processing cards area with glassmorphism
-                ProcessingCardsView(lines: lines.filter { $0.status == .processing || $0.status == .completed })
             }
             .navigationTitle("ScheDue")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
             .onAppear {
-                // Focus first line on launch
                 if let firstLine = lines.first {
                     focusedLineId = firstLine.id
                 }
@@ -62,18 +91,22 @@ struct ContentView: View {
     func handleLineSubmit(_ line: TaskLine) {
         guard !line.text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         
-        // Find and update the line status
         if let index = lines.firstIndex(where: { $0.id == line.id }) {
-            lines[index].status = .processing
+            withAnimation(.easeInOut(duration: 0.2)) {
+                lines[index].status = .processing
+            }
             
             // Simulate processing
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 if let idx = lines.firstIndex(where: { $0.id == line.id }) {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                        lines[idx].status = .completed
+                        lines[idx].status = .processed
                     }
                 }
             }
+            
+            // Remove any existing empty editing lines
+            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
             
             // Add new empty line and focus it
             let newLine = TaskLine(text: "")
@@ -81,6 +114,57 @@ struct ContentView: View {
             
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 focusedLineId = newLine.id
+            }
+        }
+    }
+    
+    func handleInfoTap(_ line: TaskLine) {
+        print("ℹ️ Info tapped for: \(line.text)")
+        // TODO: Open detail view showing what was parsed
+    }
+    
+    func handleEdit(_ line: TaskLine) {
+        if let index = lines.firstIndex(where: { $0.id == line.id }) {
+            // Remove any existing empty editing lines first
+            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
+            
+            withAnimation(.easeInOut(duration: 0.2)) {
+                lines[index].status = .editing
+            }
+            focusedLineId = line.id
+        }
+    }
+    
+    func handleDelete(_ line: TaskLine) {
+        withAnimation {
+            lines.removeAll { $0.id == line.id }
+            
+            // Ensure there's always at least one empty editing line
+            if !lines.contains(where: { $0.text.isEmpty && $0.status == .editing }) {
+                let newLine = TaskLine(text: "")
+                lines.append(newLine)
+                focusedLineId = newLine.id
+            }
+        }
+    }
+    
+    func handleBackspaceOnEmpty(_ line: TaskLine) {
+        // Find the previous line
+        if let currentIndex = lines.firstIndex(where: { $0.id == line.id }),
+           currentIndex > 0 {
+            let previousLine = lines[currentIndex - 1]
+            
+            // Delete current empty line
+            withAnimation {
+                lines.remove(at: currentIndex)
+            }
+            
+            // If previous line is processed, make it editable
+            if previousLine.status == .processed {
+                handleEdit(previousLine)
+            } else {
+                // Just focus the previous line
+                focusedLineId = previousLine.id
             }
         }
     }
@@ -92,106 +176,245 @@ struct TaskLineRow: View {
     let isFocused: Bool
     let onSubmit: () -> Void
     let onFocus: () -> Void
+    let onInfoTap: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    let onBackspaceOnEmpty: () -> Void
     
     @FocusState private var isTextFieldFocused: Bool
     
     var body: some View {
         HStack(spacing: 12) {
-            // Checkmark for completed items
-            if line.status == .completed {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
-                    .font(.title3)
-                    .transition(.scale.combined(with: .opacity))
-            }
-            
             TextField("What's coming up next?", text: $line.text)
                 .font(.body)
-                .foregroundColor(line.status == .editing ? .primary : .secondary)
+                .foregroundColor(lineTextColor)
                 .disabled(line.status != .editing)
                 .focused($isTextFieldFocused)
                 .onSubmit {
                     onSubmit()
                 }
+                .onChange(of: line.text) { oldValue, newValue in
+                    // Detect backspace on empty line
+                    if oldValue.isEmpty && newValue.isEmpty && line.status == .editing {
+                        // This fires when user presses backspace on empty field
+                        // We'll handle this with a small delay to confirm it's backspace
+                    }
+                }
                 .onChange(of: isTextFieldFocused) { _, newValue in
                     if newValue {
                         onFocus()
+                    } else {
+                        // When losing focus, check if line is empty and should trigger backspace behavior
+                        if line.text.isEmpty && line.status == .editing && !newValue {
+                            // User might be navigating with backspace
+                        }
                     }
                 }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if line.status == .processed {
+                        onEdit()
+                    }
+                }
+            
+            // Right side icons
+            HStack(spacing: 8) {
+                if line.status == .processing {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .transition(.scale.combined(with: .opacity))
+                } else if line.status == .processed {
+                    Button(action: onInfoTap) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                            .font(.title3)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .frame(width: 30)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+        .background(backgroundColor)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if line.status == .processed {
+                Button(role: .destructive) {
+                    onDelete()
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        }
         .onChange(of: isFocused) { _, newValue in
             isTextFieldFocused = newValue
         }
     }
+    
+    private var lineTextColor: Color {
+        switch line.status {
+        case .editing:
+            return .primary
+        case .processing, .processed:
+            return .secondary
+        }
+    }
+    
+    private var backgroundColor: Color {
+        line.status == .processed ? Color(.secondarySystemBackground) : Color.clear
+    }
 }
 
-// Glassmorphism processing cards
-struct ProcessingCardsView: View {
-    let lines: [TaskLine]
+// Calendar View with vertical scrolling months
+struct CalendarView: View {
+    @State private var currentDate = Date()
+    
+    private let calendar = Calendar.current
+    private let daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     
     var body: some View {
-        if !lines.isEmpty {
-            VStack(spacing: 0) {
-                Divider()
-                
-                ZStack {
-                    // Glassmorphism background
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                        .ignoresSafeArea(edges: .bottom)
-                    
-                    ScrollView {
-                        VStack(spacing: 12) {
-                            ForEach(lines) { line in
-                                ProcessingCard(line: line)
-                                    .transition(.asymmetric(
-                                        insertion: .move(edge: .bottom).combined(with: .opacity),
-                                        removal: .opacity
-                                    ))
-                            }
-                        }
-                        .padding()
+        ScrollView {
+            VStack(spacing: 40) {
+                // Generate 12 months (6 before, current, 5 after)
+                ForEach(-6...5, id: \.self) { monthOffset in
+                    if let monthDate = calendar.date(byAdding: .month, value: monthOffset, to: currentDate) {
+                        MonthView(date: monthDate, daysOfWeek: daysOfWeek)
                     }
-                    .frame(maxHeight: 250)
                 }
-                .frame(maxHeight: 250)
             }
+            .padding(.vertical, 20)
         }
     }
 }
 
-// Individual processing card with slide-up animation
-struct ProcessingCard: View {
-    let line: TaskLine
+// Individual month view
+struct MonthView: View {
+    let date: Date
+    let daysOfWeek: [String]
+    
+    private let calendar = Calendar.current
     
     var body: some View {
-        HStack(spacing: 12) {
-            Text(line.text)
-                .foregroundColor(.secondary)
-                .font(.body)
-                .lineLimit(2)
+        VStack(spacing: 16) {
+            // Month and Year header
+            Text(monthYearString)
+                .font(.title2)
+                .fontWeight(.bold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
             
-            Spacer()
+            // Days of week header
+            HStack(spacing: 0) {
+                ForEach(daysOfWeek, id: \.self) { day in
+                    Text(day)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.horizontal, 20)
             
-            if line.status == .processing {
-                ProgressView()
-                    .scaleEffect(0.8)
-            } else if line.status == .completed {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
-                    .font(.title3)
-                    .transition(.scale.combined(with: .opacity))
+            // Calendar grid
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
+                ForEach(calendarDays, id: \.self) { cellDate in
+                    if let cellDate = cellDate {
+                        DayCell(
+                            date: cellDate,
+                            isToday: isToday(cellDate),
+                            isCurrentMonth: isCurrentMonth(cellDate)
+                        )
+                    } else {
+                        // Empty cell
+                        Color.clear
+                            .frame(height: 44)
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+    
+    private var calendarDays: [Date?] {
+        guard let monthInterval = calendar.dateInterval(of: .month, for: date) else {
+            return []
+        }
+        
+        var days: [Date?] = []
+        
+        // Get the first day of the month
+        let firstDayOfMonth = calendar.component(.weekday, from: monthInterval.start)
+        
+        // Add empty cells for days before the month starts
+        for _ in 1..<firstDayOfMonth {
+            days.append(nil)
+        }
+        
+        // Add all days in the month
+        let daysInMonth = calendar.range(of: .day, in: .month, for: date)?.count ?? 30
+        for day in 0..<daysInMonth {
+            if let dayDate = calendar.date(byAdding: .day, value: day, to: monthInterval.start) {
+                days.append(dayDate)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
-        )
+        
+        return days
+    }
+    
+    private var monthYearString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: date)
+    }
+    
+    private func isToday(_ checkDate: Date) -> Bool {
+        calendar.isDateInToday(checkDate)
+    }
+    
+    private func isCurrentMonth(_ checkDate: Date) -> Bool {
+        calendar.isDate(checkDate, equalTo: date, toGranularity: .month)
+    }
+}
+
+// Individual day cell in calendar
+struct DayCell: View {
+    let date: Date
+    let isToday: Bool
+    let isCurrentMonth: Bool
+    
+    private var dayNumber: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d"
+        return formatter.string(from: date)
+    }
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            ZStack {
+                // Today circle background
+                if isToday {
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 36, height: 36)
+                }
+                
+                // Day number
+                Text(dayNumber)
+                    .font(.body)
+                    .fontWeight(isToday ? .bold : .regular)
+                    .foregroundColor(isToday ? .white : (isCurrentMonth ? .primary : .secondary))
+            }
+            .frame(height: 36)
+            
+            // Placeholder for event indicator dots
+            HStack(spacing: 2) {
+                // TODO: Show dots for events on this day
+                // Example: Circle().fill(Color.blue).frame(width: 4, height: 4)
+            }
+            .frame(height: 4)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
