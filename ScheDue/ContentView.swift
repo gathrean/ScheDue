@@ -6,6 +6,71 @@
 //
 import SwiftUI
 
+// MARK: - App Theme
+struct AppTheme {
+    // Colors
+    static let background = Color(hex: "e7e7e7")
+    static let cardBackground = Color(.secondarySystemBackground)
+    static let accentBlue = Color.blue
+    static let textPrimary = Color.primary
+    static let textSecondary = Color.secondary
+    
+    // Fonts - CHANGE HERE TO AFFECT ENTIRE APP
+    static let fontDesign: Font.Design = .default  // Change to .serif, .rounded, .monospaced
+    
+    // Spacing
+    static let paddingHorizontal: CGFloat = 20
+    static let paddingVertical: CGFloat = 12
+    
+    // Calendar
+    static let dayCellHeight: CGFloat = 80
+}
+
+// MARK: - App Font Modifier
+struct AppFontModifier: ViewModifier {
+    let size: CGFloat
+    let weight: Font.Weight
+    
+    func body(content: Content) -> some View {
+        content
+            .font(.system(size: size, weight: weight, design: AppTheme.fontDesign))
+    }
+}
+
+extension View {
+    func appFont(size: CGFloat, weight: Font.Weight = .regular) -> some View {
+        modifier(AppFontModifier(size: size, weight: weight))
+    }
+}
+
+// MARK: - Color Extension
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (1, 1, 1, 0)
+        }
+
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue:  Double(b) / 255,
+            opacity: Double(a) / 255
+        )
+    }
+}
+
 // MARK: - Task Line
 struct TaskLine: Identifiable {
     let id = UUID()
@@ -42,34 +107,6 @@ struct ContentView: View {
                     Label("Due", systemImage: "checklist")
                 }
                 .tag(2)
-        }
-    }
-}
-
-// MARK: - Due View
-struct DueView: View {
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                Divider()
-                
-                ScrollView {
-                    VStack(spacing: 16) {
-                        Text("Due List View")
-                            .font(.title2)
-                            .foregroundColor(.secondary)
-                            .padding(.top, 40)
-                        
-                        Text("Tasks and events will appear here in list format")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 40)
-                    }
-                }
-            }
-            .navigationTitle("Due")
-            .navigationBarTitleDisplayMode(.large)
         }
     }
 }
@@ -112,9 +149,11 @@ struct HomeView: View {
                         }
                     }
                 }
+                .background(AppTheme.background)
             }
             .navigationTitle("ScheDue")
             .navigationBarTitleDisplayMode(.large)
+            .background(AppTheme.background)
             .onAppear {
                 if let firstLine = lines.first {
                     focusedLineId = firstLine.id
@@ -124,81 +163,72 @@ struct HomeView: View {
     }
     
     func handleLineSubmit(_ line: TaskLine) {
-        guard !line.text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        
-        if let index = lines.firstIndex(where: { $0.id == line.id }) {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                lines[index].status = .processing
-            }
+            guard !line.text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
             
-            // Simulate processing
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                if let idx = lines.firstIndex(where: { $0.id == line.id }) {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                        lines[idx].status = .processed
+            if let index = lines.firstIndex(where: { $0.id == line.id }) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    lines[index].status = .processing
+                }
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    if let idx = lines.firstIndex(where: { $0.id == line.id }) {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                            lines[idx].status = .processed
+                        }
                     }
                 }
-            }
-            
-            // Remove any existing empty editing lines
-            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
-            
-            // Add new empty line and focus it
-            let newLine = TaskLine(text: "")
-            lines.append(newLine)
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                focusedLineId = newLine.id
-            }
-        }
-    }
-    
-    func handleInfoTap(_ line: TaskLine) {
-        print("ℹ️ Info tapped for: \(line.text)")
-        // TODO: Open detail view showing what was parsed
-    }
-    
-    func handleEdit(_ line: TaskLine) {
-        if let index = lines.firstIndex(where: { $0.id == line.id }) {
-            // Remove any existing empty editing lines first
-            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
-            
-            withAnimation(.easeInOut(duration: 0.2)) {
-                lines[index].status = .editing
-            }
-            focusedLineId = line.id
-        }
-    }
-    
-    func handleDelete(_ line: TaskLine) {
-        withAnimation {
-            lines.removeAll { $0.id == line.id }
-            
-            // Ensure there's always at least one empty editing line
-            if !lines.contains(where: { $0.text.isEmpty && $0.status == .editing }) {
+                
+                lines.removeAll { $0.text.isEmpty && $0.status == .editing }
+                
                 let newLine = TaskLine(text: "")
                 lines.append(newLine)
-                focusedLineId = newLine.id
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    focusedLineId = newLine.id
+                }
+            }
+        }
+        
+        func handleInfoTap(_ line: TaskLine) {
+            print("ℹ️ Info tapped for: \(line.text)")
+        }
+        
+        func handleEdit(_ line: TaskLine) {
+            if let index = lines.firstIndex(where: { $0.id == line.id }) {
+                lines.removeAll { $0.text.isEmpty && $0.status == .editing }
+                
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    lines[index].status = .editing
+                }
+                focusedLineId = line.id
+            }
+        }
+        
+        func handleDelete(_ line: TaskLine) {
+            withAnimation {
+                lines.removeAll { $0.id == line.id }
+                
+                if !lines.contains(where: { $0.text.isEmpty && $0.status == .editing }) {
+                    let newLine = TaskLine(text: "")
+                    lines.append(newLine)
+                    focusedLineId = newLine.id
+                }
+            }
+        }
+        
+        func handleBackspaceOnEmpty(_ line: TaskLine) {
+            if let currentIndex = lines.firstIndex(where: { $0.id == line.id }),
+               currentIndex > 0 {
+                let previousLine = lines[currentIndex - 1]
+                
+                if previousLine.status == .processed {
+                    handleEdit(previousLine)
+                } else {
+                    focusedLineId = previousLine.id
+                }
             }
         }
     }
-    
-    func handleBackspaceOnEmpty(_ line: TaskLine) {
-        // Find the previous line
-        if let currentIndex = lines.firstIndex(where: { $0.id == line.id }),
-           currentIndex > 0 {
-            let previousLine = lines[currentIndex - 1]
-            
-            // If previous line is processed, make it editable
-            if previousLine.status == .processed {
-                handleEdit(previousLine)
-            } else {
-                // Just focus the previous line
-                focusedLineId = previousLine.id
-            }
-        }
-    }
-}
 
 // MARK: - Task Line Row
 struct TaskLineRow: View {
@@ -216,28 +246,16 @@ struct TaskLineRow: View {
     var body: some View {
         HStack(spacing: 12) {
             TextField("What's coming up next?", text: $line.text)
-                .font(.body)
+                .appFont(size: 17)
                 .foregroundColor(lineTextColor)
                 .disabled(line.status != .editing)
                 .focused($isTextFieldFocused)
                 .onSubmit {
                     onSubmit()
                 }
-                .onChange(of: line.text) { oldValue, newValue in
-                    // Detect backspace on empty line
-                    if oldValue.isEmpty && newValue.isEmpty && line.status == .editing {
-                        // This fires when user presses backspace on empty field
-                        // We'll handle this with a small delay to confirm it's backspace
-                    }
-                }
                 .onChange(of: isTextFieldFocused) { _, newValue in
                     if newValue {
                         onFocus()
-                    } else {
-                        // When losing focus, check if line is empty and should trigger backspace behavior
-                        if line.text.isEmpty && line.status == .editing && !newValue {
-                            // User might be navigating with backspace
-                        }
                     }
                 }
                 .contentShape(Rectangle())
@@ -247,7 +265,6 @@ struct TaskLineRow: View {
                     }
                 }
             
-            // Right side icons
             HStack(spacing: 8) {
                 if line.status == .processing {
                     ProgressView()
@@ -256,7 +273,7 @@ struct TaskLineRow: View {
                 } else if line.status == .processed {
                     Button(action: onInfoTap) {
                         Image(systemName: "info.circle.fill")
-                            .foregroundColor(.blue)
+                            .foregroundColor(AppTheme.accentBlue)
                             .font(.title3)
                     }
                     .buttonStyle(PlainButtonStyle())
@@ -265,8 +282,8 @@ struct TaskLineRow: View {
             }
             .frame(width: 30)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.horizontal, AppTheme.paddingHorizontal)
+        .padding(.vertical, AppTheme.paddingVertical)
         .background(backgroundColor)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             if line.status == .processed {
@@ -285,27 +302,25 @@ struct TaskLineRow: View {
     private var lineTextColor: Color {
         switch line.status {
         case .editing:
-            return .primary
+            return AppTheme.textPrimary
         case .processing, .processed:
-            return .secondary
+            return AppTheme.textSecondary
         }
     }
     
     private var backgroundColor: Color {
-        line.status == .processed ? Color(.secondarySystemBackground) : Color.clear
+        line.status == .processed ? AppTheme.cardBackground : Color.clear
     }
 }
 
 // MARK: - Calendar View
 struct CalendarView: View {
     @State private var currentVisibleMonth = Date()
-    @State private var scrollOffset: CGFloat = 0
-    @Namespace private var scrollNamespace
+    @State private var hasScrolledToToday = false
     
     private let calendar = Calendar.current
-    private let daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    private let daysOfWeek = ["S", "M", "T", "W", "T", "F", "S"]
     
-    // Calculate month offset from year 2000
     private var startDate: Date {
         var components = DateComponents()
         components.year = 2000
@@ -322,13 +337,17 @@ struct CalendarView: View {
         return calendar.date(from: components) ?? Date()
     }
     
-    // Calculate total months between 2000 and 2030
     private var totalMonths: Int {
         let components = calendar.dateComponents([.month], from: startDate, to: endDate)
         return (components.month ?? 0) + 1
     }
     
-    // Check if currently viewing today's month
+    // Calculate today's month index on init
+    private var todayMonthIndex: Int {
+        let components = calendar.dateComponents([.month], from: startDate, to: Date())
+        return components.month ?? 0
+    }
+    
     private var isViewingCurrentMonth: Bool {
         calendar.isDate(currentVisibleMonth, equalTo: Date(), toGranularity: .month)
     }
@@ -336,37 +355,31 @@ struct CalendarView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
-                // Sticky header with month/year and days of week
                 VStack(spacing: 12) {
-                    // Month and Year - BIGGER
                     Text(monthYearString)
-                        .font(.system(size: 34, weight: .bold))
+                        .appFont(size: 34, weight: .bold)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, AppTheme.paddingHorizontal)
                         .padding(.top, 20)
                     
-                    // Days of week
                     HStack(spacing: 0) {
                         ForEach(daysOfWeek, id: \.self) { day in
                             Text(day)
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.secondary)
+                                .appFont(size: 12, weight: .semibold)
+                                .foregroundColor(AppTheme.textSecondary)
                                 .frame(maxWidth: .infinity)
                         }
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, AppTheme.paddingHorizontal)
                     .padding(.bottom, 8)
                 }
-                .background(Color(.systemBackground))
+                .background(AppTheme.background)
                 
                 Divider()
                 
-                // Scrollable months with offset tracking
                 ScrollViewReader { proxy in
                     ScrollView {
-                        VStack(spacing: 0) {
-                            // Generate all months from 2000 to 2030
+                        LazyVStack(spacing: 0) {
                             ForEach(0..<totalMonths, id: \.self) { monthIndex in
                                 if let monthDate = calendar.date(byAdding: .month, value: monthIndex, to: startDate) {
                                     MonthView(
@@ -378,7 +391,6 @@ struct CalendarView: View {
                                         GeometryReader { geo in
                                             Color.clear
                                                 .onChange(of: geo.frame(in: .named("scroll")).minY) { oldValue, newValue in
-                                                    // Check if this month is near the top of the scroll view
                                                     if newValue > -50 && newValue < 150 {
                                                         if !calendar.isDate(currentVisibleMonth, equalTo: monthDate, toGranularity: .month) {
                                                             currentVisibleMonth = monthDate
@@ -392,15 +404,17 @@ struct CalendarView: View {
                         }
                         .padding(.vertical, 20)
                     }
+                    .background(AppTheme.background)
                     .coordinateSpace(name: "scroll")
                     .onAppear {
-                                // Delay to ensure ScrollView is ready
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    scrollToToday(proxy: proxy)
-                                }
-                            }
+                        // Only scroll once on first appear
+                        if !hasScrolledToToday {
+                            proxy.scrollTo(todayMonthIndex, anchor: .top)
+                            hasScrolledToToday = true
+                            currentVisibleMonth = Date()
+                        }
+                    }
                     .overlay(alignment: .bottom) {
-                        // Today button - only show when not viewing current month
                         if !isViewingCurrentMonth {
                             Button(action: {
                                 scrollToToday(proxy: proxy)
@@ -409,14 +423,14 @@ struct CalendarView: View {
                                     Image(systemName: "calendar.circle.fill")
                                         .font(.body)
                                     Text("Today")
-                                        .fontWeight(.semibold)
+                                        .appFont(size: 16, weight: .semibold)
                                 }
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
+                                .padding(.horizontal, AppTheme.paddingHorizontal)
+                                .padding(.vertical, AppTheme.paddingVertical)
                                 .background(
                                     Capsule()
-                                        .fill(Color.blue)
+                                        .fill(AppTheme.accentBlue)
                                         .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
                                 )
                             }
@@ -436,12 +450,8 @@ struct CalendarView: View {
     }
     
     private func scrollToToday(proxy: ScrollViewProxy) {
-        // Calculate the month index for today
-        let components = calendar.dateComponents([.month], from: startDate, to: Date())
-        if let monthOffset = components.month {
-            withAnimation(.easeInOut(duration: 0.5)) {
-                proxy.scrollTo(monthOffset, anchor: .top)
-            }
+        withAnimation(.easeInOut(duration: 0.5)) {
+            proxy.scrollTo(todayMonthIndex, anchor: .top)
         }
     }
 }
@@ -464,13 +474,12 @@ struct MonthView: View {
                         isFullyVisible: isFullyVisible
                     )
                 } else {
-                    // Empty cell
                     Color.clear
-                        .frame(height: 80)
+                        .frame(height: AppTheme.dayCellHeight)
                 }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, AppTheme.paddingHorizontal)
         .padding(.bottom, 32)
     }
     
@@ -480,16 +489,12 @@ struct MonthView: View {
         }
         
         var days: [Date?] = []
-        
-        // Get the first day of the month
         let firstDayOfMonth = calendar.component(.weekday, from: monthInterval.start)
         
-        // Add empty cells for days before the month starts
         for _ in 1..<firstDayOfMonth {
             days.append(nil)
         }
         
-        // Add all days in the month
         let daysInMonth = calendar.range(of: .day, in: .month, for: date)?.count ?? 30
         for day in 0..<daysInMonth {
             if let dayDate = calendar.date(byAdding: .day, value: day, to: monthInterval.start) {
@@ -524,50 +529,75 @@ struct DayCell: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Top border line
             Rectangle()
                 .fill(Color(.separator))
                 .frame(height: 1)
             
             Spacer()
             
-            // Day number
             ZStack {
-                // Today circle background
                 if isToday {
                     Circle()
-                        .fill(Color.blue)
+                        .fill(AppTheme.accentBlue)
                         .frame(width: 36, height: 36)
                 }
                 
                 Text(dayNumber)
-                    .font(.body)
-                    .fontWeight(isToday ? .bold : .regular)
+                    .appFont(size: 17, weight: isToday ? .bold : .regular)
                     .foregroundColor(textColor)
             }
             .frame(height: 36)
             
             Spacer()
             
-            // Event area (placeholder for now)
             VStack(spacing: 2) {
                 // TODO: Show event dots or list here
             }
             .frame(minHeight: 20)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 80)
+        .frame(height: AppTheme.dayCellHeight)
     }
     
     private var textColor: Color {
         if isToday {
             return .white
         } else if !isCurrentMonth {
-            return .secondary
+            return AppTheme.textSecondary
         } else if isFullyVisible {
-            return .primary
+            return AppTheme.textPrimary
         } else {
-            return Color.primary.opacity(0.4)
+            return AppTheme.textPrimary.opacity(0.4)
+        }
+    }
+}
+
+// MARK: - Due View
+struct DueView: View {
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Divider()
+                
+                ScrollView {
+                    VStack(spacing: 16) {
+                        Text("Due List View")
+                            .appFont(size: 22, weight: .semibold)
+                            .foregroundColor(AppTheme.textSecondary)
+                            .padding(.top, 40)
+                        
+                        Text("Tasks and events will appear here in list format")
+                            .appFont(size: 17)
+                            .foregroundColor(AppTheme.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
+                    }
+                }
+                .background(AppTheme.background)
+            }
+            .navigationTitle("Due")
+            .navigationBarTitleDisplayMode(.large)
+            .background(AppTheme.background)
         }
     }
 }
