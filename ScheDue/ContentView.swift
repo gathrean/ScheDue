@@ -107,7 +107,7 @@ struct CalendarView: View {
     
     private var endDate: Date {
         var components = DateComponents()
-        components.year = 2030
+        components.year = 2100
         components.month = 12
         components.day = 31
         return calendar.date(from: components) ?? Date()
@@ -132,11 +132,31 @@ struct CalendarView: View {
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
                     VStack(spacing: 12) {
-                        Text(monthYearString)
-                            .font(AppTheme.headerFont(size: 34))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, AppTheme.paddingHorizontal)
-                            .padding(.top, 20)
+                        HStack(alignment: .top) {
+                            Text(monthYearString)
+                                .font(AppTheme.headerFont(size: 40))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            HStack(spacing: 16) {
+                                Button(action: {
+                                    // TODO: Show tasks
+                                }) {
+                                    Image(systemName: "checklist")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(AppTheme.textPrimary)
+                                }
+                                
+                                Button(action: {
+                                    // TODO: Show settings
+                                }) {
+                                    Image(systemName: "gearshape")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(AppTheme.textPrimary)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, AppTheme.paddingHorizontal)
+                        .padding(.top, 20)
                         
                         HStack(spacing: 0) {
                             ForEach(daysOfWeek, id: \.self) { day in
@@ -477,86 +497,208 @@ struct ToastView: View {
     }
 }
 
+// MARK: - Task Line
+struct TaskLine: Identifiable {
+    let id = UUID()
+    var text: String
+    var status: TaskStatus = .editing
+}
+
+enum TaskStatus {
+    case editing        // User is typing
+    case processing     // Being parsed
+    case processed      // Successfully processed
+}
+
+// MARK: - Task Line Row
+struct TaskLineRow: View {
+    @Binding var line: TaskLine
+    let isFocused: Bool
+    let onSubmit: () -> Void
+    let onFocus: () -> Void
+    let onInfoTap: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    
+    @FocusState private var isTextFieldFocused: Bool
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            TextField("What's coming up next?", text: $line.text)
+                .appFont(size: 17)
+                .foregroundColor(lineTextColor)
+                .disabled(line.status != .editing)
+                .focused($isTextFieldFocused)
+                .onSubmit {
+                    onSubmit()
+                }
+                .onChange(of: isTextFieldFocused) { _, newValue in
+                    if newValue {
+                        onFocus()
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if line.status == .processed {
+                        onEdit()
+                    }
+                }
+            
+            HStack(spacing: 8) {
+                if line.status == .processing {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .transition(.scale.combined(with: .opacity))
+                } else if line.status == .processed {
+                    Button(action: onInfoTap) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(AppTheme.accentBlue)
+                            .font(.title3)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .frame(width: 30)
+        }
+        .padding(.horizontal, AppTheme.paddingHorizontal)
+        .padding(.vertical, AppTheme.paddingVertical)
+        .background(backgroundColor)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if line.status == .processed {
+                Button(role: .destructive) {
+                    onDelete()
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        }
+        .onChange(of: isFocused) { _, newValue in
+            isTextFieldFocused = newValue
+        }
+    }
+    
+    private var lineTextColor: Color {
+        switch line.status {
+        case .editing:
+            return AppTheme.textPrimary
+        case .processing, .processed:
+            return AppTheme.textSecondary
+        }
+    }
+    
+    private var backgroundColor: Color {
+        line.status == .processed ? AppTheme.cardBackground : Color.clear
+    }
+}
+
 // MARK: - Quick Add Sheet
 struct QuickAddSheet: View {
     @Environment(\.dismiss) var dismiss
     @Binding var sheetDetent: PresentationDetent
-    @State private var inputText = ""
-    @State private var parsedPreview: ParsedEvent?
-    @FocusState private var isTextFieldFocused: Bool
+    @State private var lines: [TaskLine] = [TaskLine(text: "")]
+    @FocusState private var focusedLineId: UUID?
     
     let onEventAdded: (Date, String) -> Void
     
-    private var isExpanded: Bool {
-        sheetDetent == .large
-    }
-    
     var body: some View {
         VStack(spacing: 0) {
-            // Expand/Collapse button
-            HStack {
-                Spacer()
-                Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        sheetDetent = isExpanded ? .fraction(0.33) : .large
-                    }
-                }) {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.up")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(AppTheme.textSecondary)
-                        .frame(width: 30, height: 30)
-                }
-                .padding(.trailing, 16)
-                .padding(.top, 8)
-            }
-            
             ScrollView {
-                VStack(spacing: 16) {
-                    // Parse preview (shown when expanded)
-                    if isExpanded, let preview = parsedPreview {
-                        ParsePreviewView(event: preview)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                            .padding(.horizontal, 20)
-                    }
-                    
-                    // Input field
-                    TextField("What's coming up next?", text: $inputText)
-                        .appFont(size: 17)
-                        .padding(16)
-                        .background(AppTheme.cardBackground)
-                        .cornerRadius(12)
-                        .focused($isTextFieldFocused)
-                        .onSubmit {
-                            handleSubmit()
-                        }
-                        .onChange(of: inputText) { oldValue, newValue in
-                            if !newValue.isEmpty {
-                                parsedPreview = parseText(newValue)
-                            } else {
-                                parsedPreview = nil
+                VStack(spacing: 0) {
+                    ForEach($lines) { $line in
+                        TaskLineRow(
+                            line: $line,
+                            isFocused: focusedLineId == line.id,
+                            onSubmit: {
+                                handleLineSubmit(line)
+                            },
+                            onFocus: {
+                                focusedLineId = line.id
+                            },
+                            onInfoTap: {
+                                handleInfoTap(line)
+                            },
+                            onEdit: {
+                                handleEdit(line)
+                            },
+                            onDelete: {
+                                handleDelete(line)
                             }
-                        }
-                        .padding(.horizontal, 20)
+                        )
+                    }
                 }
-                .padding(.vertical, 16)
+                .padding(.top, 30)
+                .padding(.bottom, 30)
             }
         }
         .background(AppTheme.background)
-        .interactiveDismissDisabled(false)
         .onAppear {
-            isTextFieldFocused = true
+            if let firstLine = lines.first {
+                focusedLineId = firstLine.id
+            }
         }
     }
     
-    private func handleSubmit() {
-        guard !inputText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+    func handleLineSubmit(_ line: TaskLine) {
+        guard !line.text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         
-        let event = parseText(inputText)
-        onEventAdded(event.date, inputText)
-        
-        inputText = ""
-        parsedPreview = nil
-        isTextFieldFocused = true
+        if let index = lines.firstIndex(where: { $0.id == line.id }) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                lines[index].status = .processing
+            }
+            
+            // Parse and add to calendar
+            let event = parseText(line.text)
+            onEventAdded(event.date, line.text)
+            
+            // Simulate processing
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                if let idx = lines.firstIndex(where: { $0.id == line.id }) {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                        lines[idx].status = .processed
+                    }
+                }
+            }
+            
+            // Remove any existing empty editing lines
+            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
+            
+            // Add new empty line and focus it
+            let newLine = TaskLine(text: "")
+            lines.append(newLine)
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                focusedLineId = newLine.id
+            }
+        }
+    }
+    
+    func handleInfoTap(_ line: TaskLine) {
+        print("ℹ️ Info tapped for: \(line.text)")
+        // TODO: Show parsed details
+    }
+    
+    func handleEdit(_ line: TaskLine) {
+        if let index = lines.firstIndex(where: { $0.id == line.id }) {
+            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
+            
+            withAnimation(.easeInOut(duration: 0.2)) {
+                lines[index].status = .editing
+            }
+            focusedLineId = line.id
+        }
+    }
+    
+    func handleDelete(_ line: TaskLine) {
+        withAnimation {
+            lines.removeAll { $0.id == line.id }
+            
+            if !lines.contains(where: { $0.text.isEmpty && $0.status == .editing }) {
+                let newLine = TaskLine(text: "")
+                lines.append(newLine)
+                focusedLineId = newLine.id
+            }
+        }
     }
     
     private func parseText(_ text: String) -> ParsedEvent {
@@ -589,49 +731,6 @@ struct ParsedEvent {
     enum EventType {
         case event
         case task
-    }
-}
-
-// MARK: - Parse Preview View
-struct ParsePreviewView: View {
-    let event: ParsedEvent
-    
-    private var dateString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy"
-        return formatter.string(from: event.date)
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: event.type == .event ? "calendar" : "checkmark.circle")
-                    .foregroundColor(AppTheme.accentBlue)
-                Text(event.type == .event ? "Calendar Event" : "Task")
-                    .appFont(size: 14, weight: .medium)
-                    .foregroundColor(AppTheme.textSecondary)
-            }
-            
-            Text(event.title)
-                .appFont(size: 16, weight: .semibold)
-                .foregroundColor(AppTheme.textPrimary)
-            
-            HStack(spacing: 4) {
-                Text(dateString)
-                    .appFont(size: 14)
-                    .foregroundColor(AppTheme.textSecondary)
-                
-                if let time = event.time {
-                    Text("at \(time)")
-                        .appFont(size: 14)
-                        .foregroundColor(AppTheme.textSecondary)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(12)
     }
 }
 
