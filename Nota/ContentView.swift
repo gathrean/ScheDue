@@ -84,7 +84,7 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Week Task View (Main Screen)
+// MARK: - Week Task View
 struct WeekTaskView: View {
     @State private var selectedDate = Date()
     @State private var currentWeekStart: Date
@@ -305,7 +305,7 @@ struct WeekTaskView: View {
     }
 }
 
-// MARK: - Monthly Calendar Sheet (Vertical Scroll)
+// MARK: - Monthly Calendar Sheet
 struct MonthlyCalendarSheet: View {
     @Environment(\.dismiss) var dismiss
     @Binding var selectedDate: Date
@@ -445,7 +445,7 @@ struct MonthlyCalendarSheet: View {
     }
 }
 
-// MARK: - Month Grid View (Updated)
+// MARK: - Month Grid View
 struct MonthGridView: View {
     let date: Date
     let selectedDate: Date
@@ -501,7 +501,7 @@ struct MonthGridView: View {
     }
 }
 
-// MARK: - Simple Day Cell (Updated with visual hierarchy)
+// MARK: - Simple Day Cell
 struct SimpleDayCell: View {
     let date: Date
     let isToday: Bool
@@ -562,6 +562,20 @@ struct WeekScrollView: View {
     
     private let calendar = Calendar.current
     
+    // Generate weeks around current week (past and future)
+    private var weeks: [Date] {
+        let weeksToShow = 52 * 5 // 5 years worth of weeks
+        let startOffset = -weeksToShow / 2
+        
+        return (startOffset...(weeksToShow / 2)).compactMap { weekOffset in
+            calendar.date(byAdding: .weekOfYear, value: weekOffset, to: currentWeekStart)
+        }
+    }
+    
+    private var currentWeekIndex: Int {
+        weeks.firstIndex(where: { calendar.isDate($0, equalTo: currentWeekStart, toGranularity: .weekOfYear) }) ?? 0
+    }
+    
     private var weekDates: [Date] {
         (0..<7).compactMap { offset in
             calendar.date(byAdding: .day, value: offset, to: currentWeekStart)
@@ -570,48 +584,26 @@ struct WeekScrollView: View {
     
     var body: some View {
         VStack(spacing: 8) {
-            // Week navigation
-            HStack {
-                Button(action: previousWeek) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(AppTheme.textPrimary)
-                }
-                
-                Spacer()
-                
-                Text(weekRangeString)
-                    .appFont(size: 14, weight: .medium)
-                    .foregroundColor(AppTheme.textSecondary)
-                
-                Spacer()
-                
-                Button(action: nextWeek) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(AppTheme.textPrimary)
-                }
-            }
-            .padding(.horizontal, 20)
+            // Week range text
+            Text(weekRangeString)
+                .appFont(size: 14, weight: .medium)
+                .foregroundColor(AppTheme.textSecondary)
+                .padding(.top, 12)
             
-            // Days of week
-            HStack(spacing: 8) {
-                ForEach(weekDates, id: \.self) { date in
-                    WeekDayCell(
-                        date: date,
-                        isSelected: calendar.isDate(date, inSameDayAs: selectedDate),
-                        isToday: calendar.isDateInToday(date),
-                        onTap: {
-                            withAnimation {
-                                selectedDate = date
-                            }
-                        }
+            // Swipeable week view
+            TabView(selection: $currentWeekStart) {
+                ForEach(weeks, id: \.self) { weekStart in
+                    WeekRowView(
+                        weekStart: weekStart,
+                        selectedDate: $selectedDate
                     )
+                    .tag(weekStart)
                 }
             }
-            .padding(.horizontal, 20)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: 80)
         }
-        .padding(.vertical, 12)
+        .padding(.bottom, 8)
     }
     
     private var weekRangeString: String {
@@ -627,21 +619,37 @@ struct WeekScrollView: View {
         
         return "\(startString) - \(endString)"
     }
+}
+
+// MARK: - Week Row View
+struct WeekRowView: View {
+    let weekStart: Date
+    @Binding var selectedDate: Date
     
-    private func previousWeek() {
-        if let newWeekStart = calendar.date(byAdding: .weekOfYear, value: -1, to: currentWeekStart) {
-            withAnimation {
-                currentWeekStart = newWeekStart
-            }
+    private let calendar = Calendar.current
+    
+    private var weekDates: [Date] {
+        (0..<7).compactMap { offset in
+            calendar.date(byAdding: .day, value: offset, to: weekStart)
         }
     }
     
-    private func nextWeek() {
-        if let newWeekStart = calendar.date(byAdding: .weekOfYear, value: 1, to: currentWeekStart) {
-            withAnimation {
-                currentWeekStart = newWeekStart
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(weekDates, id: \.self) { date in
+                WeekDayCell(
+                    date: date,
+                    isSelected: calendar.isDate(date, inSameDayAs: selectedDate),
+                    isToday: calendar.isDateInToday(date),
+                    onTap: {
+                        withAnimation {
+                            selectedDate = date
+                        }
+                    }
+                )
             }
         }
+        .padding(.horizontal, 20)
     }
 }
 
