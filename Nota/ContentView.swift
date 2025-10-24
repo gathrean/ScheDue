@@ -1,6 +1,6 @@
 //
 //  ContentView.swift
-//  ScheDue
+//  Nota
 //
 //  Created by GATHREAN DELA CRUZ on 2025-10-19.
 //
