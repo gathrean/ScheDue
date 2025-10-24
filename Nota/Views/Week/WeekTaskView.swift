@@ -10,7 +10,7 @@ import SwiftUI
 struct WeekTaskView: View {
     @State private var selectedDate = Date()
     @State private var currentWeekStart: Date
-    @State private var lines: [TaskLine] = [TaskLine(text: "")]
+    @State private var tasksByDate: [Date: [TaskLine]] = [:]
     @State private var showMonthlyCalendar = false
     @State private var toastMessage: String?
     @FocusState private var focusedLineId: UUID?
@@ -64,10 +64,10 @@ struct WeekTaskView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 12)
                 
-                // Tasks
+                // Tasks for selected date
                 ScrollView {
                     VStack(spacing: 0) {
-                        ForEach($lines) { $line in
+                        ForEach(linesBinding) { $line in
                             TaskLineRow(
                                 line: $line,
                                 isFocused: focusedLineId == line.id,
@@ -132,19 +132,36 @@ struct WeekTaskView: View {
             )
         }
         .onAppear {
-            if let firstLine = lines.first {
+            // Ensure current date has at least one empty line
+            ensureEmptyLineExists()
+            
+            // Focus first line
+            if let firstLine = getCurrentLines().first {
                 focusedLineId = firstLine.id
             }
         }
         .onChange(of: selectedDate) { oldValue, newValue in
+            // Update week if date changed to different week
             let newWeekStart = Self.getWeekStart(for: newValue)
             if newWeekStart != currentWeekStart {
                 withAnimation {
                     currentWeekStart = newWeekStart
                 }
             }
+            
+            // Ensure new date has at least one empty line
+            ensureEmptyLineExists()
+            
+            // Focus first line when switching dates
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                if let firstLine = getCurrentLines().first {
+                    focusedLineId = firstLine.id
+                }
+            }
         }
     }
+    
+    // MARK: - Helper Functions
     
     private var selectedDateString: String {
         let formatter = DateFormatter()
@@ -170,26 +187,70 @@ struct WeekTaskView: View {
         }
     }
     
+    private func normalizedDate(_ date: Date) -> Date {
+        calendar.startOfDay(for: date)
+    }
+    
+    private func getCurrentLines() -> [TaskLine] {
+        let normalizedDate = normalizedDate(selectedDate)
+        return tasksByDate[normalizedDate] ?? []
+    }
+    
+    private func ensureEmptyLineExists() {
+        let normalizedDate = normalizedDate(selectedDate)
+        var lines = tasksByDate[normalizedDate] ?? []
+        
+        // If no lines exist, or no empty editing line exists, add one
+        if lines.isEmpty || !lines.contains(where: { $0.text.isEmpty && $0.status == .editing }) {
+            lines.append(TaskLine(text: ""))
+            tasksByDate[normalizedDate] = lines
+        }
+    }
+    
+    // Create binding for the lines array
+    private var linesBinding: Binding<[TaskLine]> {
+        let normalizedDate = normalizedDate(selectedDate)
+        return Binding(
+            get: {
+                tasksByDate[normalizedDate] ?? [TaskLine(text: "")]
+            },
+            set: { newValue in
+                tasksByDate[normalizedDate] = newValue
+            }
+        )
+    }
+    
+    // MARK: - Task Management
+    
     func handleLineSubmit(_ line: TaskLine) {
         guard !line.text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        
+        let normalizedDate = normalizedDate(selectedDate)
+        var lines = tasksByDate[normalizedDate] ?? []
         
         if let index = lines.firstIndex(where: { $0.id == line.id }) {
             withAnimation(.easeInOut(duration: 0.2)) {
                 lines[index].status = .processing
+                tasksByDate[normalizedDate] = lines
             }
             
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                if let idx = lines.firstIndex(where: { $0.id == line.id }) {
+                var updatedLines = tasksByDate[normalizedDate] ?? []
+                if let idx = updatedLines.firstIndex(where: { $0.id == line.id }) {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                        lines[idx].status = .processed
+                        updatedLines[idx].status = .processed
+                        tasksByDate[normalizedDate] = updatedLines
                     }
                 }
             }
             
+            // Remove empty editing lines
             lines.removeAll { $0.text.isEmpty && $0.status == .editing }
             
+            // Add new empty line
             let newLine = TaskLine(text: "")
             lines.append(newLine)
+            tasksByDate[normalizedDate] = lines
             
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 focusedLineId = newLine.id
@@ -204,17 +265,24 @@ struct WeekTaskView: View {
     }
     
     func handleEdit(_ line: TaskLine) {
+        let normalizedDate = normalizedDate(selectedDate)
+        var lines = tasksByDate[normalizedDate] ?? []
+        
         if let index = lines.firstIndex(where: { $0.id == line.id }) {
             lines.removeAll { $0.text.isEmpty && $0.status == .editing }
             
             withAnimation(.easeInOut(duration: 0.2)) {
                 lines[index].status = .editing
+                tasksByDate[normalizedDate] = lines
             }
             focusedLineId = line.id
         }
     }
     
     func handleDelete(_ line: TaskLine) {
+        let normalizedDate = normalizedDate(selectedDate)
+        var lines = tasksByDate[normalizedDate] ?? []
+        
         withAnimation {
             lines.removeAll { $0.id == line.id }
             
@@ -223,6 +291,8 @@ struct WeekTaskView: View {
                 lines.append(newLine)
                 focusedLineId = newLine.id
             }
+            
+            tasksByDate[normalizedDate] = lines
         }
     }
     
