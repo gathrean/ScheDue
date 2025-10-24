@@ -88,11 +88,11 @@ struct ContentView: View {
 struct CalendarView: View {
     @State private var currentVisibleMonth = Date()
     @State private var hasScrolledToToday = false
-    @State private var showQuickAdd = false
     @State private var toastMessage: String?
     @State private var newEventDate: Date?
-    @State private var sheetDetent: PresentationDetent = .fraction(0.33)
     @State private var scrollToTodayTrigger = false
+    @State private var selectedDate: Date? // NEW: Track selected date
+    @State private var showDayDetail = false // NEW: Show day detail sheet
     
     private let calendar = Calendar.current
     private let daysOfWeek = ["S", "M", "T", "W", "T", "F", "S"]
@@ -132,31 +132,11 @@ struct CalendarView: View {
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
                     VStack(spacing: 12) {
-                        HStack(alignment: .top) {
-                            Text(monthYearString)
-                                .font(AppTheme.headerFont(size: 40))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            
-                            HStack(spacing: 16) {
-                                Button(action: {
-                                    // TODO: Show tasks
-                                }) {
-                                    Image(systemName: "checklist")
-                                        .font(.system(size: 24))
-                                        .foregroundColor(AppTheme.textPrimary)
-                                }
-                                
-                                Button(action: {
-                                    // TODO: Show settings
-                                }) {
-                                    Image(systemName: "gearshape")
-                                        .font(.system(size: 24))
-                                        .foregroundColor(AppTheme.textPrimary)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, AppTheme.paddingHorizontal)
-                        .padding(.top, 20)
+                        Text(monthYearString)
+                            .font(AppTheme.headerFont(size: 34))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, AppTheme.paddingHorizontal)
+                            .padding(.top, 20)
                         
                         HStack(spacing: 0) {
                             ForEach(daysOfWeek, id: \.self) { day in
@@ -181,7 +161,11 @@ struct CalendarView: View {
                                         MonthView(
                                             date: monthDate,
                                             isFullyVisible: calendar.isDate(currentVisibleMonth, equalTo: monthDate, toGranularity: .month),
-                                            highlightedDate: newEventDate
+                                            highlightedDate: newEventDate,
+                                            onDateTap: { tappedDate in
+                                                selectedDate = tappedDate
+                                                showDayDetail = true
+                                            }
                                         )
                                         .id(monthIndex)
                                         .background(
@@ -190,7 +174,9 @@ struct CalendarView: View {
                                                     .onChange(of: geo.frame(in: .named("scroll")).minY) { oldValue, newValue in
                                                         if newValue > -50 && newValue < 150 {
                                                             if !calendar.isDate(currentVisibleMonth, equalTo: monthDate, toGranularity: .month) {
-                                                                currentVisibleMonth = monthDate
+                                                                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                                                    currentVisibleMonth = monthDate
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -221,9 +207,8 @@ struct CalendarView: View {
                     }
                 }
                 
-                // Bottom buttons row
+                // Today button (bottom left) - REMOVED FAB
                 HStack {
-                    // Today button (bottom left)
                     if !isViewingCurrentMonth {
                         Button(action: {
                             scrollToTodayTrigger.toggle()
@@ -245,25 +230,9 @@ struct CalendarView: View {
                             insertion: .move(edge: .bottom).combined(with: .scale(scale: 0.9)),
                             removal: .move(edge: .bottom).combined(with: .opacity)
                         ))
-                        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: isViewingCurrentMonth)
                     }
                     
                     Spacer()
-                    
-                    // Floating Action Button (bottom right)
-                    Button(action: {
-                        showQuickAdd = true
-                    }) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 24, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: 56, height: 56)
-                            .background(
-                                Circle()
-                                    .fill(AppTheme.accentBlue)
-                                    .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
-                            )
-                    }
                 }
                 .animation(.spring(response: 0.4, dampingFraction: 0.7), value: isViewingCurrentMonth)
                 .padding(.horizontal, 20)
@@ -281,16 +250,15 @@ struct CalendarView: View {
                     .allowsHitTesting(false)
                 }
             }
-            .sheet(isPresented: $showQuickAdd) {
-                QuickAddSheet(
-                    sheetDetent: $sheetDetent,
-                    onEventAdded: { date, eventText in
-                        handleEventAdded(date: date, text: eventText)
-                    }
-                )
-                .presentationDetents([.fraction(0.33), .large], selection: $sheetDetent)
-                .presentationDragIndicator(.visible)
-                .presentationBackgroundInteraction(.enabled(upThrough: .large))
+            .sheet(isPresented: $showDayDetail) {
+                if let date = selectedDate {
+                    DayDetailSheet(
+                        selectedDate: date,
+                        onEventAdded: { eventDate, eventText in
+                            handleEventAdded(date: eventDate, text: eventText)
+                        }
+                    )
+                }
             }
         }
         
@@ -347,6 +315,7 @@ struct MonthView: View {
     let date: Date
     let isFullyVisible: Bool
     let highlightedDate: Date?
+    let onDateTap: (Date) -> Void
     
     private let calendar = Calendar.current
     
@@ -359,7 +328,10 @@ struct MonthView: View {
                         isToday: isToday(cellDate),
                         isCurrentMonth: isCurrentMonth(cellDate),
                         isFullyVisible: isFullyVisible,
-                        isHighlighted: isHighlighted(cellDate)
+                        isHighlighted: isHighlighted(cellDate),
+                        onTap: {
+                            onDateTap(cellDate)
+                        }
                     )
                 } else {
                     Color.clear
@@ -414,6 +386,7 @@ struct DayCell: View {
     let isCurrentMonth: Bool
     let isFullyVisible: Bool
     let isHighlighted: Bool
+    let onTap: () -> Void // NEW: Tap callback
     
     @State private var showDot = false
     
@@ -458,6 +431,10 @@ struct DayCell: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: AppTheme.dayCellHeight)
+        .contentShape(Rectangle()) // Makes entire cell tappable
+        .onTapGesture {
+            onTap()
+        }
         .onChange(of: isHighlighted) { oldValue, newValue in
             if newValue {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
@@ -476,6 +453,521 @@ struct DayCell: View {
             return AppTheme.textPrimary
         } else {
             return AppTheme.textPrimary.opacity(0.4)
+        }
+    }
+}
+
+// MARK: - Day Detail Sheet
+struct DayDetailSheet: View {
+    @Environment(\.dismiss) var dismiss
+    @State private var selectedDate: Date
+    @State private var lines: [TaskLine] = [TaskLine(text: "")]
+    @State private var currentWeekStart: Date
+    @FocusState private var focusedLineId: UUID?
+    
+    let onEventAdded: (Date, String) -> Void
+    
+    private let calendar = Calendar.current
+    
+    init(selectedDate: Date, onEventAdded: @escaping (Date, String) -> Void) {
+        let normalizedDate = Calendar.current.startOfDay(for: selectedDate)
+        self._selectedDate = State(initialValue: normalizedDate)
+        self._currentWeekStart = State(initialValue: Self.getWeekStart(for: normalizedDate))
+        self.onEventAdded = onEventAdded
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Spacer for drag indicator
+            Color.clear
+                .frame(height: 12)
+            
+            // Horizontal week view
+            WeekScrollView(
+                currentWeekStart: $currentWeekStart,
+                selectedDate: $selectedDate
+            )
+            
+            Divider()
+                .padding(.vertical, 8)
+            
+            // Selected date header
+            Text(selectedDateString)
+                .appFont(size: 20, weight: .semibold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+            
+            // Tasks for this date
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach($lines) { $line in
+                        TaskLineRow(
+                            line: $line,
+                            isFocused: focusedLineId == line.id,
+                            onSubmit: {
+                                handleLineSubmit(line)
+                            },
+                            onFocus: {
+                                focusedLineId = line.id
+                            },
+                            onInfoTap: {
+                                handleInfoTap(line)
+                            },
+                            onEdit: {
+                                handleEdit(line)
+                            },
+                            onDelete: {
+                                handleDelete(line)
+                            }
+                        )
+                    }
+                }
+                .padding(.top, 8)
+                .padding(.bottom, 20)
+            }
+        }
+        .background(AppTheme.background)
+        .onAppear {
+            if let firstLine = lines.first {
+                focusedLineId = firstLine.id
+            }
+        }
+        .onChange(of: selectedDate) { oldValue, newValue in
+            // Update week if date changed to different week
+            let newWeekStart = Self.getWeekStart(for: newValue)
+            if newWeekStart != currentWeekStart {
+                withAnimation {
+                    currentWeekStart = newWeekStart
+                }
+            }
+            
+            // TODO: Load tasks for the new selected date
+        }
+    }
+    
+    private var selectedDateString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMM d, yyyy"
+        return formatter.string(from: selectedDate)
+    }
+    
+    private static func getWeekStart(for date: Date) -> Date {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+        return calendar.date(from: components) ?? date
+    }
+    
+    // ... (copy all the handle functions from QuickAddSheet: handleLineSubmit, handleInfoTap, handleEdit, handleDelete)
+    
+    func handleLineSubmit(_ line: TaskLine) {
+        guard !line.text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        
+        if let index = lines.firstIndex(where: { $0.id == line.id }) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                lines[index].status = .processing
+            }
+            
+            // Parse and add to calendar
+            _ = parseText(line.text)
+            onEventAdded(selectedDate, line.text)
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                if let idx = lines.firstIndex(where: { $0.id == line.id }) {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                        lines[idx].status = .processed
+                    }
+                }
+            }
+            
+            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
+            
+            let newLine = TaskLine(text: "")
+            lines.append(newLine)
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                focusedLineId = newLine.id
+            }
+        }
+    }
+    
+    func handleInfoTap(_ line: TaskLine) {
+        print("ℹ️ Info tapped for: \(line.text)")
+    }
+    
+    func handleEdit(_ line: TaskLine) {
+        if let index = lines.firstIndex(where: { $0.id == line.id }) {
+            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
+            
+            withAnimation(.easeInOut(duration: 0.2)) {
+                lines[index].status = .editing
+            }
+            focusedLineId = line.id
+        }
+    }
+    
+    func handleDelete(_ line: TaskLine) {
+        withAnimation {
+            lines.removeAll { $0.id == line.id }
+            
+            if !lines.contains(where: { $0.text.isEmpty && $0.status == .editing }) {
+                let newLine = TaskLine(text: "")
+                lines.append(newLine)
+                focusedLineId = newLine.id
+            }
+        }
+    }
+    
+    private func parseText(_ text: String) -> ParsedEvent {
+        if text.lowercased().contains("tomorrow") {
+            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+            return ParsedEvent(
+                title: text,
+                date: tomorrow,
+                type: .event,
+                time: "2:00 PM"
+            )
+        }
+        
+        return ParsedEvent(
+            title: text,
+            date: Date(),
+            type: .event,
+            time: nil
+        )
+    }
+}
+//
+//// MARK: - Day Detail Sheet
+//struct DayDetailSheet: View {
+//    @Environment(\.dismiss) var dismiss
+//    @State private var selectedDate: Date
+//    @State private var lines: [TaskLine] = [TaskLine(text: "")]
+//    @State private var currentWeekStart: Date
+//    @FocusState private var focusedLineId: UUID?
+//    
+//    let onEventAdded: (Date, String) -> Void
+//    
+//    private let calendar = Calendar.current
+//    
+//    init(selectedDate: Date, onEventAdded: @escaping (Date, String) -> Void) {
+//        let normalizedDate = Calendar.current.startOfDay(for: selectedDate)
+//        self._selectedDate = State(initialValue: normalizedDate)
+//        self._currentWeekStart = State(initialValue: Self.getWeekStart(for: normalizedDate))
+//        self.onEventAdded = onEventAdded
+//    }
+//    
+//    var body: some View {
+//        VStack(spacing: 0) {
+//            // Spacer for drag indicator
+//            Color.clear
+//                .frame(height: 12)
+//            
+//            // Horizontal week view
+//            WeekScrollView(
+//                currentWeekStart: $currentWeekStart,
+//                selectedDate: $selectedDate
+//            )
+//            
+//            Divider()
+//                .padding(.vertical, 8)
+//            
+//            // Selected date header
+//            Text(selectedDateString)
+//                .appFont(size: 20, weight: .semibold)
+//                .frame(maxWidth: .infinity, alignment: .leading)
+//                .padding(.horizontal, 20)
+//                .padding(.bottom, 12)
+//            
+//            // Tasks for this date
+//            ScrollView {
+//                VStack(spacing: 0) {
+//                    ForEach($lines) { $line in
+//                        TaskLineRow(
+//                            line: $line,
+//                            isFocused: focusedLineId == line.id,
+//                            onSubmit: {
+//                                handleLineSubmit(line)
+//                            },
+//                            onFocus: {
+//                                focusedLineId = line.id
+//                            },
+//                            onInfoTap: {
+//                                handleInfoTap(line)
+//                            },
+//                            onEdit: {
+//                                handleEdit(line)
+//                            },
+//                            onDelete: {
+//                                handleDelete(line)
+//                            }
+//                        )
+//                    }
+//                }
+//                .padding(.top, 8)
+//                .padding(.bottom, 20)
+//            }
+//        }
+//        .background(AppTheme.background)
+//        .onAppear {
+//            if let firstLine = lines.first {
+//                focusedLineId = firstLine.id
+//            }
+//        }
+//        .onChange(of: selectedDate) { oldValue, newValue in
+//            // Update week if date changed to different week
+//            let newWeekStart = Self.getWeekStart(for: newValue)
+//            if newWeekStart != currentWeekStart {
+//                withAnimation {
+//                    currentWeekStart = newWeekStart
+//                }
+//            }
+//            
+//            // TODO: Load tasks for the new selected date
+//        }
+//    }
+//    
+//    private var selectedDateString: String {
+//        let formatter = DateFormatter()
+//        formatter.dateFormat = "EEEE, MMM d, yyyy"
+//        return formatter.string(from: selectedDate)
+//    }
+//    
+//    private static func getWeekStart(for date: Date) -> Date {
+//        let calendar = Calendar.current
+//        let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+//        return calendar.date(from: components) ?? date
+//    }
+//    
+//    // ... (copy all the handle functions from QuickAddSheet: handleLineSubmit, handleInfoTap, handleEdit, handleDelete)
+//    
+//    func handleLineSubmit(_ line: TaskLine) {
+//        guard !line.text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+//        
+//        if let index = lines.firstIndex(where: { $0.id == line.id }) {
+//            withAnimation(.easeInOut(duration: 0.2)) {
+//                lines[index].status = .processing
+//            }
+//            
+//            // Parse and add to calendar
+//            let event = parseText(line.text)
+//            onEventAdded(selectedDate, line.text)
+//            
+//            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+//                if let idx = lines.firstIndex(where: { $0.id == line.id }) {
+//                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+//                        lines[idx].status = .processed
+//                    }
+//                }
+//            }
+//            
+//            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
+//            
+//            let newLine = TaskLine(text: "")
+//            lines.append(newLine)
+//            
+//            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+//                focusedLineId = newLine.id
+//            }
+//        }
+//    }
+//    
+//    func handleInfoTap(_ line: TaskLine) {
+//        print("ℹ️ Info tapped for: \(line.text)")
+//    }
+//    
+//    func handleEdit(_ line: TaskLine) {
+//        if let index = lines.firstIndex(where: { $0.id == line.id }) {
+//            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
+//            
+//            withAnimation(.easeInOut(duration: 0.2)) {
+//                lines[index].status = .editing
+//            }
+//            focusedLineId = line.id
+//        }
+//    }
+//    
+//    func handleDelete(_ line: TaskLine) {
+//        withAnimation {
+//            lines.removeAll { $0.id == line.id }
+//            
+//            if !lines.contains(where: { $0.text.isEmpty && $0.status == .editing }) {
+//                let newLine = TaskLine(text: "")
+//                lines.append(newLine)
+//                focusedLineId = newLine.id
+//            }
+//        }
+//    }
+//    
+//    private func parseText(_ text: String) -> ParsedEvent {
+//        if text.lowercased().contains("tomorrow") {
+//            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+//            return ParsedEvent(
+//                title: text,
+//                date: tomorrow,
+//                type: .event,
+//                time: "2:00 PM"
+//            )
+//        }
+//        
+//        return ParsedEvent(
+//            title: text,
+//            date: Date(),
+//            type: .event,
+//            time: nil
+//        )
+//    }
+//}
+
+// MARK: - Week Scroll View
+struct WeekScrollView: View {
+    @Binding var currentWeekStart: Date
+    @Binding var selectedDate: Date
+    
+    private let calendar = Calendar.current
+    
+    private var weekDates: [Date] {
+        (0..<7).compactMap { offset in
+            calendar.date(byAdding: .day, value: offset, to: currentWeekStart)
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            // Week navigation
+            HStack {
+                Button(action: previousWeek) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppTheme.textPrimary)
+                }
+                
+                Spacer()
+                
+                Text(weekRangeString)
+                    .appFont(size: 14, weight: .medium)
+                    .foregroundColor(AppTheme.textSecondary)
+                
+                Spacer()
+                
+                Button(action: nextWeek) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppTheme.textPrimary)
+                }
+            }
+            .padding(.horizontal, 20)
+            
+            // Days of week
+            HStack(spacing: 8) {
+                ForEach(weekDates, id: \.self) { date in
+                    WeekDayCell(
+                        date: date,
+                        isSelected: calendar.isDate(date, inSameDayAs: selectedDate),
+                        isToday: calendar.isDateInToday(date),
+                        onTap: {
+                            withAnimation {
+                                selectedDate = date
+                            }
+                        }
+                    )
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+        .padding(.vertical, 12)
+    }
+    
+    private var weekRangeString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        
+        guard let weekEnd = calendar.date(byAdding: .day, value: 6, to: currentWeekStart) else {
+            return ""
+        }
+        
+        let startString = formatter.string(from: currentWeekStart)
+        let endString = formatter.string(from: weekEnd)
+        
+        return "\(startString) - \(endString)"
+    }
+    
+    private func previousWeek() {
+        if let newWeekStart = calendar.date(byAdding: .weekOfYear, value: -1, to: currentWeekStart) {
+            withAnimation {
+                currentWeekStart = newWeekStart
+            }
+        }
+    }
+    
+    private func nextWeek() {
+        if let newWeekStart = calendar.date(byAdding: .weekOfYear, value: 1, to: currentWeekStart) {
+            withAnimation {
+                currentWeekStart = newWeekStart
+            }
+        }
+    }
+}
+
+// MARK: - Week Day Cell
+struct WeekDayCell: View {
+    let date: Date
+    let isSelected: Bool
+    let isToday: Bool
+    let onTap: () -> Void
+    
+    private let calendar = Calendar.current
+    
+    private var dayLetter: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE"
+        return String(formatter.string(from: date).prefix(1))
+    }
+    
+    private var dayNumber: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d"
+        return formatter.string(from: date)
+    }
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(dayLetter)
+                .appFont(size: 12, weight: .medium)
+                .foregroundColor(AppTheme.textSecondary)
+            
+            Text(dayNumber)
+                .appFont(size: 16, weight: isSelected ? .bold : .regular)
+                .foregroundColor(textColor)
+                .frame(width: 36, height: 36)
+                .background(
+                    Circle()
+                        .fill(backgroundColor)
+                )
+        }
+        .frame(maxWidth: .infinity)
+        .onTapGesture {
+            onTap()
+        }
+    }
+    
+    private var textColor: Color {
+        if isSelected {
+            return .white
+        } else if isToday {
+            return AppTheme.accentBlue
+        } else {
+            return AppTheme.textPrimary
+        }
+    }
+    
+    private var backgroundColor: Color {
+        if isSelected {
+            return AppTheme.accentBlue
+        } else if isToday {
+            return AppTheme.accentBlue.opacity(0.1)
+        } else {
+            return Color.clear
         }
     }
 }
@@ -592,134 +1084,134 @@ struct TaskLineRow: View {
     }
 }
 
-// MARK: - Quick Add Sheet
-struct QuickAddSheet: View {
-    @Environment(\.dismiss) var dismiss
-    @Binding var sheetDetent: PresentationDetent
-    @State private var lines: [TaskLine] = [TaskLine(text: "")]
-    @FocusState private var focusedLineId: UUID?
-    
-    let onEventAdded: (Date, String) -> Void
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach($lines) { $line in
-                        TaskLineRow(
-                            line: $line,
-                            isFocused: focusedLineId == line.id,
-                            onSubmit: {
-                                handleLineSubmit(line)
-                            },
-                            onFocus: {
-                                focusedLineId = line.id
-                            },
-                            onInfoTap: {
-                                handleInfoTap(line)
-                            },
-                            onEdit: {
-                                handleEdit(line)
-                            },
-                            onDelete: {
-                                handleDelete(line)
-                            }
-                        )
-                    }
-                }
-                .padding(.top, 30)
-                .padding(.bottom, 30)
-            }
-        }
-        .background(AppTheme.background)
-        .onAppear {
-            if let firstLine = lines.first {
-                focusedLineId = firstLine.id
-            }
-        }
-    }
-    
-    func handleLineSubmit(_ line: TaskLine) {
-        guard !line.text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        
-        if let index = lines.firstIndex(where: { $0.id == line.id }) {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                lines[index].status = .processing
-            }
-            
-            // Parse and add to calendar
-            let event = parseText(line.text)
-            onEventAdded(event.date, line.text)
-            
-            // Simulate processing
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                if let idx = lines.firstIndex(where: { $0.id == line.id }) {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                        lines[idx].status = .processed
-                    }
-                }
-            }
-            
-            // Remove any existing empty editing lines
-            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
-            
-            // Add new empty line and focus it
-            let newLine = TaskLine(text: "")
-            lines.append(newLine)
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                focusedLineId = newLine.id
-            }
-        }
-    }
-    
-    func handleInfoTap(_ line: TaskLine) {
-        print("ℹ️ Info tapped for: \(line.text)")
-        // TODO: Show parsed details
-    }
-    
-    func handleEdit(_ line: TaskLine) {
-        if let index = lines.firstIndex(where: { $0.id == line.id }) {
-            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
-            
-            withAnimation(.easeInOut(duration: 0.2)) {
-                lines[index].status = .editing
-            }
-            focusedLineId = line.id
-        }
-    }
-    
-    func handleDelete(_ line: TaskLine) {
-        withAnimation {
-            lines.removeAll { $0.id == line.id }
-            
-            if !lines.contains(where: { $0.text.isEmpty && $0.status == .editing }) {
-                let newLine = TaskLine(text: "")
-                lines.append(newLine)
-                focusedLineId = newLine.id
-            }
-        }
-    }
-    
-    private func parseText(_ text: String) -> ParsedEvent {
-        if text.lowercased().contains("tomorrow") {
-            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-            return ParsedEvent(
-                title: text,
-                date: tomorrow,
-                type: .event,
-                time: "2:00 PM"
-            )
-        }
-        
-        return ParsedEvent(
-            title: text,
-            date: Date(),
-            type: .event,
-            time: nil
-        )
-    }
-}
+//// MARK: - Quick Add Sheet
+//struct QuickAddSheet: View {
+//    @Environment(\.dismiss) var dismiss
+//    @Binding var sheetDetent: PresentationDetent
+//    @State private var lines: [TaskLine] = [TaskLine(text: "")]
+//    @FocusState private var focusedLineId: UUID?
+//    
+//    let onEventAdded: (Date, String) -> Void
+//    
+//    var body: some View {
+//        VStack(spacing: 0) {
+//            ScrollView {
+//                VStack(spacing: 0) {
+//                    ForEach($lines) { $line in
+//                        TaskLineRow(
+//                            line: $line,
+//                            isFocused: focusedLineId == line.id,
+//                            onSubmit: {
+//                                handleLineSubmit(line)
+//                            },
+//                            onFocus: {
+//                                focusedLineId = line.id
+//                            },
+//                            onInfoTap: {
+//                                handleInfoTap(line)
+//                            },
+//                            onEdit: {
+//                                handleEdit(line)
+//                            },
+//                            onDelete: {
+//                                handleDelete(line)
+//                            }
+//                        )
+//                    }
+//                }
+//                .padding(.top, 30)
+//                .padding(.bottom, 30)
+//            }
+//        }
+//        .background(AppTheme.background)
+//        .onAppear {
+//            if let firstLine = lines.first {
+//                focusedLineId = firstLine.id
+//            }
+//        }
+//    }
+//    
+//    func handleLineSubmit(_ line: TaskLine) {
+//        guard !line.text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+//        
+//        if let index = lines.firstIndex(where: { $0.id == line.id }) {
+//            withAnimation(.easeInOut(duration: 0.2)) {
+//                lines[index].status = .processing
+//            }
+//            
+//            // Parse and add to calendar
+//            let event = parseText(line.text)
+//            onEventAdded(event.date, line.text)
+//            
+//            // Simulate processing
+//            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+//                if let idx = lines.firstIndex(where: { $0.id == line.id }) {
+//                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+//                        lines[idx].status = .processed
+//                    }
+//                }
+//            }
+//            
+//            // Remove any existing empty editing lines
+//            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
+//            
+//            // Add new empty line and focus it
+//            let newLine = TaskLine(text: "")
+//            lines.append(newLine)
+//            
+//            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+//                focusedLineId = newLine.id
+//            }
+//        }
+//    }
+//    
+//    func handleInfoTap(_ line: TaskLine) {
+//        print("ℹ️ Info tapped for: \(line.text)")
+//        // TODO: Show parsed details
+//    }
+//    
+//    func handleEdit(_ line: TaskLine) {
+//        if let index = lines.firstIndex(where: { $0.id == line.id }) {
+//            lines.removeAll { $0.text.isEmpty && $0.status == .editing }
+//            
+//            withAnimation(.easeInOut(duration: 0.2)) {
+//                lines[index].status = .editing
+//            }
+//            focusedLineId = line.id
+//        }
+//    }
+//    
+//    func handleDelete(_ line: TaskLine) {
+//        withAnimation {
+//            lines.removeAll { $0.id == line.id }
+//            
+//            if !lines.contains(where: { $0.text.isEmpty && $0.status == .editing }) {
+//                let newLine = TaskLine(text: "")
+//                lines.append(newLine)
+//                focusedLineId = newLine.id
+//            }
+//        }
+//    }
+//    
+//    private func parseText(_ text: String) -> ParsedEvent {
+//        if text.lowercased().contains("tomorrow") {
+//            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+//            return ParsedEvent(
+//                title: text,
+//                date: tomorrow,
+//                type: .event,
+//                time: "2:00 PM"
+//            )
+//        }
+//        
+//        return ParsedEvent(
+//            title: text,
+//            date: Date(),
+//            type: .event,
+//            time: nil
+//        )
+//    }
+//}
 
 // MARK: - Parsed Event Model
 struct ParsedEvent {
