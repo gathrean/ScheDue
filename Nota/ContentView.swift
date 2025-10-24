@@ -175,7 +175,29 @@ struct WeekTaskView: View {
             }
             .background(AppTheme.background)
             
-            // REMOVE the floating calendar button at bottom - it's now in header
+            // Today button (bottom right) - only show when not viewing today
+            if !isViewingToday {
+                Button(action: {
+                    jumpToToday()
+                }) {
+                    Text("Today")
+                        .appFont(size: 16, weight: .semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.accentBlue)
+                                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        )
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 20)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .scale(scale: 0.9)),
+                    removal: .move(edge: .bottom).combined(with: .opacity)
+                ))
+            }
             
             // Toast notification
             if let message = toastMessage {
@@ -189,6 +211,7 @@ struct WeekTaskView: View {
                 .allowsHitTesting(false)
             }
         }
+        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: isViewingToday)
         .sheet(isPresented: $showMonthlyCalendar) {
             MonthlyCalendarSheet(
                 selectedDate: $selectedDate,
@@ -214,6 +237,18 @@ struct WeekTaskView: View {
             }
             
             // TODO: Load tasks for the new selected date
+        }
+    }
+    
+    private var isViewingToday: Bool {
+        calendar.isDateInToday(selectedDate)
+    }
+
+    private func jumpToToday() {
+        let today = Date()
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+            selectedDate = today
+            currentWeekStart = Self.getWeekStart(for: today)
         }
     }
     
