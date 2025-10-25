@@ -11,18 +11,28 @@ struct WeekScrollView: View {
     @Binding var currentWeekStart: Date
     @Binding var selectedDate: Date
     
-    private var calendar: Calendar {
+    private static let calendar: Calendar = {
         var cal = Calendar.current
         cal.firstWeekday = 1 // 1 = Sunday
         return cal
+    }()
+    
+    private static func getWeekStart(for date: Date) -> Date {
+        guard let weekInterval = calendar.dateInterval(of: .weekOfYear, for: date) else {
+            return calendar.startOfDay(for: date)
+        }
+        return calendar.startOfDay(for: weekInterval.start)
     }
     
     private var weeks: [Date] {
         let weeksToShow = 52 * 5
         let startOffset = -weeksToShow / 2
         
+        // Ensure currentWeekStart is normalized
+        let normalizedWeekStart = Self.getWeekStart(for: currentWeekStart)
+        
         return (startOffset...(weeksToShow / 2)).compactMap { weekOffset in
-            calendar.date(byAdding: .weekOfYear, value: weekOffset, to: currentWeekStart)
+            Self.calendar.date(byAdding: .weekOfYear, value: weekOffset, to: normalizedWeekStart)
         }
     }
     
@@ -32,7 +42,6 @@ struct WeekScrollView: View {
                 .appFont(size: 14, weight: .medium)
                 .foregroundColor(AppTheme.textSecondary)
                 .padding(.top, 12)
-
             GeometryReader { geometry in
                 TabView(selection: $currentWeekStart) {
                     ForEach(weeks, id: \.self) { weekStart in
@@ -55,7 +64,7 @@ struct WeekScrollView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
         
-        guard let weekEnd = calendar.date(byAdding: .day, value: 6, to: currentWeekStart) else {
+        guard let weekEnd = Self.calendar.date(byAdding: .day, value: 6, to: currentWeekStart) else {
             return ""
         }
         

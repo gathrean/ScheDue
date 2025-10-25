@@ -11,11 +11,15 @@ struct WeekRowView: View {
     let weekStart: Date
     @Binding var selectedDate: Date
     
-    private let calendar = Calendar.current
+    private static let calendar: Calendar = {
+        var cal = Calendar.current
+        cal.firstWeekday = 1
+        return cal
+    }()
     
     private var weekDates: [Date] {
         (0..<7).compactMap { offset in
-            calendar.date(byAdding: .day, value: offset, to: weekStart)
+            Self.calendar.date(byAdding: .day, value: offset, to: weekStart)
         }
     }
     
@@ -24,8 +28,8 @@ struct WeekRowView: View {
             ForEach(weekDates, id: \.self) { date in
                 WeekDayCell(
                     date: date,
-                    isSelected: calendar.isDate(date, inSameDayAs: selectedDate),
-                    isToday: calendar.isDateInToday(date),
+                    isSelected: Self.calendar.isDate(date, inSameDayAs: selectedDate),
+                    isToday: Self.calendar.isDateInToday(date),
                     onTap: {
                         withAnimation {
                             selectedDate = date

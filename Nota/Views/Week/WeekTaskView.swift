@@ -16,11 +16,11 @@ struct WeekTaskView: View {
     @FocusState private var focusedLineId: UUID?
     @State private var isUpdatingProgrammatically = false
     
-    private var calendar: Calendar {
-        var cal = Calendar.current
-        cal.firstWeekday = 1 // 1 = Sunday
-        return cal
-    }
+    private static let calendar: Calendar = {
+            var cal = Calendar.current
+            cal.firstWeekday = 1 // 1 = Sunday
+            return cal
+        }()
     
     init() {
         let today = Date()
@@ -145,14 +145,15 @@ struct WeekTaskView: View {
                 focusedLineId = firstLine.id
             }
         }
+        
         .onChange(of: currentWeekStart) { oldValue, newValue in
             guard oldValue != newValue else { return }
             
-            let dayOffset = calendar.dateComponents([.day],
+            let dayOffset = Self.calendar.dateComponents([.day],
                                                     from: Self.getWeekStart(for: selectedDate),
                                                     to: selectedDate).day ?? 0
             
-            if let newDate = calendar.date(byAdding: .day, value: dayOffset, to: newValue) {
+            if let newDate = Self.calendar.date(byAdding: .day, value: dayOffset, to: newValue) {
                 isUpdatingProgrammatically = true  // ← ADD
                 selectedDate = newDate
                 DispatchQueue.main.async {
@@ -160,6 +161,30 @@ struct WeekTaskView: View {
                 }
             }
         }
+        .onChange(of: currentWeekStart) { oldValue, newValue in
+                // First handler: Normalize currentWeekStart if it's not a proper week start
+                let normalized = Self.getWeekStart(for: newValue)
+                if normalized != newValue {
+                    // This shouldn't trigger recursion since we check they're different
+                    currentWeekStart = normalized
+                    return // Skip the rest of this handler
+                }
+                
+                // Continue with existing logic only if already normalized
+                guard oldValue != newValue else { return }
+
+                let dayOffset = Self.calendar.dateComponents([.day],
+                    from: Self.getWeekStart(for: selectedDate),
+                    to: selectedDate).day ?? 0
+
+                if let newDate = Self.calendar.date(byAdding: .day, value: dayOffset, to: newValue) {
+                    isUpdatingProgrammatically = true
+                    selectedDate = newDate
+                    DispatchQueue.main.async {
+                        isUpdatingProgrammatically = false
+                    }
+                }
+            }
         .onChange(of: selectedDate) { oldValue, newValue in
             guard !isUpdatingProgrammatically else { return }  // ← ADD THIS LINE
             
@@ -189,15 +214,15 @@ struct WeekTaskView: View {
     }
     
     private var isViewingToday: Bool {
-        calendar.isDateInToday(selectedDate)
+        Self.calendar.isDateInToday(selectedDate)
     }
     
     private static func getWeekStart(for date: Date) -> Date {
-        var calendar = Calendar.current
-        calendar.firstWeekday = 1 // 1 = Sunday
-        let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
-        return calendar.date(from: components) ?? date
-    }
+            guard let weekInterval = calendar.dateInterval(of: .weekOfYear, for: date) else {
+                return calendar.startOfDay(for: date)
+            }
+            return calendar.startOfDay(for: weekInterval.start)
+        }
     
     private func jumpToToday() {
         let today = Date()
@@ -208,7 +233,7 @@ struct WeekTaskView: View {
     }
     
     private func normalizedDate(_ date: Date) -> Date {
-        calendar.startOfDay(for: date)
+        Self.calendar.startOfDay(for: date)
     }
     
     private func getCurrentLines() -> [TaskLine] {
