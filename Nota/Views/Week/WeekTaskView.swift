@@ -31,29 +31,8 @@ struct WeekTaskView: View {
     }
     
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Text("Nota")
-                        .font(AppTheme.headerFont(size: 34))
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        showMonthlyCalendar = true
-                    }) {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 24, weight: .regular))
-                            .foregroundColor(AppTheme.textPrimary)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 12)
-                
-                Divider()
-                
                 // Week scroll
                 WeekScrollView(
                     currentWeekStart: $currentWeekStart,
@@ -91,27 +70,49 @@ struct WeekTaskView: View {
                 .background(AppTheme.background)
             }
             .background(AppTheme.background)
-            
-            // Today button
-            if !isViewingToday {
-                Button(action: jumpToToday) {
-                    Text("Today")
-                        .appFont(size: 16, weight: .semibold)
+
+            // Bottom buttons
+            HStack {
+                // Calendar button
+                Button(action: {
+                    showMonthlyCalendar = true
+                }) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 20, weight: .regular))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
+                        .frame(width: 48, height: 48)
                         .background(
-                            Capsule()
+                            Circle()
                                 .fill(AppTheme.accentBlue)
                                 .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
                         )
                 }
-                .padding(.trailing, 20)
+                .padding(.leading, 20)
                 .padding(.bottom, 20)
-                .transition(.asymmetric(
-                    insertion: .move(edge: .bottom).combined(with: .scale(scale: 0.9)),
-                    removal: .move(edge: .bottom).combined(with: .opacity)
-                ))
+
+                Spacer()
+
+                // Today button
+                if !isViewingToday {
+                    Button(action: jumpToToday) {
+                        Text("Today")
+                            .appFont(size: 16, weight: .semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(
+                                Capsule()
+                                    .fill(AppTheme.accentBlue)
+                                    .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                            )
+                    }
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 20)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .scale(scale: 0.9)),
+                        removal: .move(edge: .bottom).combined(with: .opacity)
+                    ))
+                }
             }
             
             // Parsed task notification
