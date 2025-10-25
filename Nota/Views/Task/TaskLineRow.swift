@@ -26,8 +26,10 @@ struct TaskLineRow: View {
                 .disabled(line.status != .editing)
                 .focused($isTextFieldFocused)
                 .onSubmit {
+                    print("🔑 Return key pressed, text: \(line.text)")
                     onSubmit()
                 }
+                .submitLabel(.done)
                 .onChange(of: isTextFieldFocused) { _, newValue in
                     if newValue {
                         onFocus()
@@ -40,12 +42,29 @@ struct TaskLineRow: View {
                     }
                 }
             
-            HStack(spacing: 8) {
+            HStack(spacing: 4) {
                 if line.status == .processing {
                     ProgressView()
                         .scaleEffect(0.8)
                         .transition(.scale.combined(with: .opacity))
                 } else if line.status == .processed {
+                    // Show parsed data indicators
+                    if line.hasScheduledTime {
+                        Image(systemName: "clock.fill")
+                            .foregroundColor(AppTheme.accentBlue)
+                            .font(.caption)
+                    }
+                    if line.hasLocation {
+                        Image(systemName: "location.fill")
+                            .foregroundColor(AppTheme.accentBlue)
+                            .font(.caption)
+                    }
+                    if line.isEvent {
+                        Image(systemName: "calendar")
+                            .foregroundColor(AppTheme.accentBlue)
+                            .font(.caption)
+                    }
+
                     Button(action: onInfoTap) {
                         Image(systemName: "info.circle.fill")
                             .foregroundColor(AppTheme.accentBlue)
@@ -55,7 +74,7 @@ struct TaskLineRow: View {
                     .transition(.scale.combined(with: .opacity))
                 }
             }
-            .frame(width: 30)
+            .frame(minWidth: 30)
         }
         .padding(.horizontal, AppTheme.paddingHorizontal)
         .padding(.vertical, AppTheme.paddingVertical)
