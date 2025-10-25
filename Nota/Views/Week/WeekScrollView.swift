@@ -11,7 +11,11 @@ struct WeekScrollView: View {
     @Binding var currentWeekStart: Date
     @Binding var selectedDate: Date
     
-    private let calendar = Calendar.current
+    private var calendar: Calendar {
+        var cal = Calendar.current
+        cal.firstWeekday = 1 // 1 = Sunday
+        return cal
+    }
     
     private var weeks: [Date] {
         let weeksToShow = 52 * 5
@@ -28,17 +32,20 @@ struct WeekScrollView: View {
                 .appFont(size: 14, weight: .medium)
                 .foregroundColor(AppTheme.textSecondary)
                 .padding(.top, 12)
-            
-            TabView(selection: $currentWeekStart) {
-                ForEach(weeks, id: \.self) { weekStart in
-                    WeekRowView(
-                        weekStart: weekStart,
-                        selectedDate: $selectedDate
-                    )
-                    .tag(weekStart)
+
+            GeometryReader { geometry in
+                TabView(selection: $currentWeekStart) {
+                    ForEach(weeks, id: \.self) { weekStart in
+                        WeekRowView(
+                            weekStart: weekStart,
+                            selectedDate: $selectedDate
+                        )
+                        .frame(width: geometry.size.width, height: 80, alignment: .center)
+                        .tag(weekStart)
+                    }
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(height: 80)
         }
         .padding(.bottom, 8)

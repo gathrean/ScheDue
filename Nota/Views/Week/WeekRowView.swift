@@ -20,7 +20,7 @@ struct WeekRowView: View {
     }
     
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             ForEach(weekDates, id: \.self) { date in
                 WeekDayCell(
                     date: date,

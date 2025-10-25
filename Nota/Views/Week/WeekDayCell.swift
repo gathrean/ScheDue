@@ -18,6 +18,13 @@ struct WeekDayCell: View {
         formatter.dateFormat = "EEE"
         return String(formatter.string(from: date).prefix(1))
     }
+
+    private var isWeekday: Bool {
+        let calendar = Calendar.current
+        let weekday = calendar.component(.weekday, from: date)
+        // weekday: 1 = Sunday, 2 = Monday, ..., 7 = Saturday
+        return weekday >= 2 && weekday <= 6
+    }
     
     private var dayNumber: String {
         let formatter = DateFormatter()
@@ -28,11 +35,11 @@ struct WeekDayCell: View {
     var body: some View {
         VStack(spacing: 4) {
             Text(dayLetter)
-                .appFont(size: 12, weight: .medium)
+                .font(.system(size: 12, weight: isWeekday ? .heavy : .medium, design: .default))
                 .foregroundColor(AppTheme.textSecondary)
-            
+
             Text(dayNumber)
-                .appFont(size: 16, weight: isSelected ? .bold : .regular)
+                .font(.system(size: 16, weight: isSelected ? .bold : .regular, design: .default))
                 .foregroundColor(textColor)
                 .frame(width: 36, height: 36)
                 .background(
@@ -41,6 +48,7 @@ struct WeekDayCell: View {
                 )
         }
         .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
         .onTapGesture {
             onTap()
         }

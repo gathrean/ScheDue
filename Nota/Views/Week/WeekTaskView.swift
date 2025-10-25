@@ -14,8 +14,13 @@ struct WeekTaskView: View {
     @State private var showMonthlyCalendar = false
     @State private var toastMessage: String?
     @FocusState private var focusedLineId: UUID?
+    @State private var isUpdatingProgrammatically = false
     
-    private let calendar = Calendar.current
+    private var calendar: Calendar {
+        var cal = Calendar.current
+        cal.firstWeekday = 1 // 1 = Sunday
+        return cal
+    }
     
     init() {
         let today = Date()
@@ -140,8 +145,24 @@ struct WeekTaskView: View {
                 focusedLineId = firstLine.id
             }
         }
+        .onChange(of: currentWeekStart) { oldValue, newValue in
+            guard oldValue != newValue else { return }
+            
+            let dayOffset = calendar.dateComponents([.day],
+                                                    from: Self.getWeekStart(for: selectedDate),
+                                                    to: selectedDate).day ?? 0
+            
+            if let newDate = calendar.date(byAdding: .day, value: dayOffset, to: newValue) {
+                isUpdatingProgrammatically = true  // ← ADD
+                selectedDate = newDate
+                DispatchQueue.main.async {
+                    isUpdatingProgrammatically = false  // ← ADD
+                }
+            }
+        }
         .onChange(of: selectedDate) { oldValue, newValue in
-            // Update week if date changed to different week
+            guard !isUpdatingProgrammatically else { return }  // ← ADD THIS LINE
+            
             let newWeekStart = Self.getWeekStart(for: newValue)
             if newWeekStart != currentWeekStart {
                 withAnimation {
@@ -149,10 +170,8 @@ struct WeekTaskView: View {
                 }
             }
             
-            // Ensure new date has at least one empty line
             ensureEmptyLineExists()
             
-            // Focus first line when switching dates
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 if let firstLine = getCurrentLines().first {
                     focusedLineId = firstLine.id
@@ -174,7 +193,8 @@ struct WeekTaskView: View {
     }
     
     private static func getWeekStart(for date: Date) -> Date {
-        let calendar = Calendar.current
+        var calendar = Calendar.current
+        calendar.firstWeekday = 1 // 1 = Sunday
         let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
         return calendar.date(from: components) ?? date
     }
