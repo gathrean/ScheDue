@@ -12,6 +12,7 @@ struct TaskLine: Identifiable {
     var text: String
     var status: TaskStatus = .editing
     var parsedData: ParsedInput?
+    var isCompleted: Bool = false
 
     // Computed properties for easy access
     var hasScheduledTime: Bool {

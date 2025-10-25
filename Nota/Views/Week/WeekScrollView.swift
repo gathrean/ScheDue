@@ -10,6 +10,7 @@ import SwiftUI
 struct WeekScrollView: View {
     @Binding var currentWeekStart: Date
     @Binding var selectedDate: Date
+    @EnvironmentObject var taskStore: TaskDataStore
     
     private static let calendar: Calendar = {
         var cal = Calendar.current
@@ -49,6 +50,7 @@ struct WeekScrollView: View {
                             weekStart: weekStart,
                             selectedDate: $selectedDate
                         )
+                        .environmentObject(taskStore)
                         .frame(width: geometry.size.width, height: 80, alignment: .center)
                         .tag(weekStart)
                     }

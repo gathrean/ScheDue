@@ -10,7 +10,7 @@ import SwiftUI
 struct WeekTaskView: View {
     @State private var selectedDate = Date()
     @State private var currentWeekStart: Date
-    @State private var tasksByDate: [Date: [TaskLine]] = [:]
+    @StateObject private var taskStore = TaskDataStore()
     @State private var showMonthlyCalendar = false
     @State private var toastMessage: String?
     @State private var parsedNotification: (parsed: ParsedInput, targetDate: Date)?
@@ -59,6 +59,7 @@ struct WeekTaskView: View {
                     currentWeekStart: $currentWeekStart,
                     selectedDate: $selectedDate
                 )
+                .environmentObject(taskStore)
                 
                 // Selected date
                 Text(selectedDateString)
@@ -67,18 +68,20 @@ struct WeekTaskView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 12)
                 
-                // Tasks for selected date
+                // Tasks for selected dateb
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(linesBinding) { $line in
                             TaskLineRow(
                                 line: $line,
                                 isFocused: focusedLineId == line.id,
+                                selectedDate: selectedDate,
                                 onSubmit: { handleLineSubmit(line) },
                                 onFocus: { focusedLineId = line.id },
                                 onInfoTap: { handleInfoTap(line) },
                                 onEdit: { handleEdit(line) },
-                                onDelete: { handleDelete(line) }
+                                onDelete: { handleDelete(line) },
+                                onToggleCompletion: { handleToggleCompletion(line) }
                             )
                         }
                     }
@@ -290,17 +293,17 @@ struct WeekTaskView: View {
     
     private func getCurrentLines() -> [TaskLine] {
         let normalizedDate = normalizedDate(selectedDate)
-        return tasksByDate[normalizedDate] ?? []
+        return taskStore.tasksByDate[normalizedDate] ?? []
     }
     
     private func ensureEmptyLineExists() {
         let normalizedDate = normalizedDate(selectedDate)
-        var lines = tasksByDate[normalizedDate] ?? []
+        var lines = taskStore.tasksByDate[normalizedDate] ?? []
         
         // If no lines exist, or no empty editing line exists, add one
         if lines.isEmpty || !lines.contains(where: { $0.text.isEmpty && $0.status == .editing }) {
             lines.append(TaskLine(text: ""))
-            tasksByDate[normalizedDate] = lines
+            taskStore.tasksByDate[normalizedDate] = lines
         }
     }
     
@@ -309,10 +312,10 @@ struct WeekTaskView: View {
         let normalizedDate = normalizedDate(selectedDate)
         return Binding(
             get: {
-                tasksByDate[normalizedDate] ?? [TaskLine(text: "")]
+                taskStore.tasksByDate[normalizedDate] ?? [TaskLine(text: "")]
             },
             set: { newValue in
-                tasksByDate[normalizedDate] = newValue
+                taskStore.tasksByDate[normalizedDate] = newValue
             }
         )
     }
@@ -335,11 +338,11 @@ struct WeekTaskView: View {
         // Determine target date (use parsed date if available, otherwise current selected date)
         let targetDate = parsed.date != nil ? normalizedDate(parsed.date!) : normalizedDate(selectedDate)
         print("🎯 Target date (normalized): \(targetDate)")
-        print("📊 Tasks by date dictionary before: \(tasksByDate.keys.map { shortDateString($0) })")
+        print("📊 Tasks by date dictionary before: \(taskStore.tasksByDate.keys.map { shortDateString($0) })")
 
         // Find the line in the CURRENT date's lines (where it was typed)
         let currentNormalizedDate = normalizedDate(selectedDate)
-        var currentLines = tasksByDate[currentNormalizedDate] ?? []
+        var currentLines = taskStore.tasksByDate[currentNormalizedDate] ?? []
         print("📝 Current date lines count: \(currentLines.count)")
 
         if let index = currentLines.firstIndex(where: { $0.id == line.id }) {
@@ -358,9 +361,9 @@ struct WeekTaskView: View {
                 currentLines.remove(at: index)
 
                 // Add to target date
-                var targetLines = tasksByDate[targetDate] ?? []
+                var targetLines = taskStore.tasksByDate[targetDate] ?? []
                 targetLines.append(updatedLine)
-                tasksByDate[targetDate] = targetLines
+                taskStore.tasksByDate[targetDate] = targetLines
 
                 print("📊 Task moved. Target date now has \(targetLines.count) tasks")
             } else {
@@ -369,21 +372,21 @@ struct WeekTaskView: View {
             }
 
             // Update current date
-            tasksByDate[currentNormalizedDate] = currentLines
+            taskStore.tasksByDate[currentNormalizedDate] = currentLines
 
             // Animate to processing
             withAnimation(.easeInOut(duration: 0.2)) {
                 // Trigger UI update
-                tasksByDate = tasksByDate
+                taskStore.tasksByDate = taskStore.tasksByDate
             }
 
             // After 1.5s, mark as processed
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                var targetLines = tasksByDate[targetDate] ?? []
+                var targetLines = taskStore.tasksByDate[targetDate] ?? []
                 if let idx = targetLines.firstIndex(where: { $0.id == line.id }) {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
                         targetLines[idx].status = .processed
-                        tasksByDate[targetDate] = targetLines
+                        taskStore.tasksByDate[targetDate] = targetLines
                         print("✅ Task marked as processed on \(shortDateString(targetDate))")
                     }
                 }
@@ -393,7 +396,7 @@ struct WeekTaskView: View {
             currentLines.removeAll { $0.text.isEmpty && $0.status == .editing }
             let newLine = TaskLine(text: "")
             currentLines.append(newLine)
-            tasksByDate[currentNormalizedDate] = currentLines
+            taskStore.tasksByDate[currentNormalizedDate] = currentLines
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 focusedLineId = newLine.id
@@ -446,14 +449,14 @@ struct WeekTaskView: View {
     
     func handleEdit(_ line: TaskLine) {
         let normalizedDate = normalizedDate(selectedDate)
-        var lines = tasksByDate[normalizedDate] ?? []
+        var lines = taskStore.tasksByDate[normalizedDate] ?? []
         
         if let index = lines.firstIndex(where: { $0.id == line.id }) {
             lines.removeAll { $0.text.isEmpty && $0.status == .editing }
             
             withAnimation(.easeInOut(duration: 0.2)) {
                 lines[index].status = .editing
-                tasksByDate[normalizedDate] = lines
+                taskStore.tasksByDate[normalizedDate] = lines
             }
             focusedLineId = line.id
         }
@@ -461,21 +464,33 @@ struct WeekTaskView: View {
     
     func handleDelete(_ line: TaskLine) {
         let normalizedDate = normalizedDate(selectedDate)
-        var lines = tasksByDate[normalizedDate] ?? []
-        
+        var lines = taskStore.tasksByDate[normalizedDate] ?? []
+
         withAnimation {
             lines.removeAll { $0.id == line.id }
-            
+
             if !lines.contains(where: { $0.text.isEmpty && $0.status == .editing }) {
                 let newLine = TaskLine(text: "")
                 lines.append(newLine)
                 focusedLineId = newLine.id
             }
-            
-            tasksByDate[normalizedDate] = lines
+
+            taskStore.tasksByDate[normalizedDate] = lines
         }
     }
-    
+
+    func handleToggleCompletion(_ line: TaskLine) {
+        let normalizedDate = normalizedDate(selectedDate)
+        var lines = taskStore.tasksByDate[normalizedDate] ?? []
+
+        if let index = lines.firstIndex(where: { $0.id == line.id }) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                lines[index].isCompleted.toggle()
+                taskStore.tasksByDate[normalizedDate] = lines
+            }
+        }
+    }
+
     private func showToast(_ message: String) {
         withAnimation {
             toastMessage = message

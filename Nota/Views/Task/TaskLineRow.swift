@@ -10,19 +10,45 @@ import SwiftUI
 struct TaskLineRow: View {
     @Binding var line: TaskLine
     let isFocused: Bool
+    let selectedDate: Date
     let onSubmit: () -> Void
     let onFocus: () -> Void
     let onInfoTap: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
-    
+    let onToggleCompletion: () -> Void
+
     @FocusState private var isTextFieldFocused: Bool
-    
+
+    private var placeholderText: String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(selectedDate) {
+            return "What's on your mind?"
+        } else if selectedDate < Date() {
+            return "Reflecting on this day?"
+        } else {
+            return "Planning ahead?"
+        }
+    }
+
     var body: some View {
         HStack(spacing: 12) {
-            TextField("What's coming up next?", text: $line.text)
+            // Checkbox circle (only show for processed tasks)
+            if line.status == .processed {
+                Button(action: {
+                    onToggleCompletion()
+                }) {
+                    Image(systemName: line.isCompleted ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 22))
+                        .foregroundColor(line.isCompleted ? AppTheme.accentBlue : AppTheme.textSecondary)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+
+            TextField(placeholderText, text: $line.text)
                 .appFont(size: 17)
                 .foregroundColor(lineTextColor)
+                .strikethrough(line.isCompleted, color: AppTheme.textSecondary)
                 .disabled(line.status != .editing)
                 .focused($isTextFieldFocused)
                 .onSubmit {
@@ -94,6 +120,10 @@ struct TaskLineRow: View {
     }
     
     private var lineTextColor: Color {
+        if line.isCompleted {
+            return AppTheme.textSecondary.opacity(0.6)
+        }
+
         switch line.status {
         case .editing:
             return AppTheme.textPrimary

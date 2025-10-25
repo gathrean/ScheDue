@@ -11,6 +11,8 @@ struct WeekDayCell: View {
     let date: Date
     let isSelected: Bool
     let isToday: Bool
+    let taskCount: Int
+    let hasEvents: Bool
     let onTap: () -> Void
     
     private var dayLetter: String {
@@ -38,14 +40,35 @@ struct WeekDayCell: View {
                 .font(.system(size: 12, weight: isWeekday ? .heavy : .medium, design: .default))
                 .foregroundColor(AppTheme.textSecondary)
 
-            Text(dayNumber)
-                .font(.system(size: 16, weight: isSelected ? .bold : .regular, design: .default))
-                .foregroundColor(textColor)
-                .frame(width: 36, height: 36)
-                .background(
-                    Circle()
-                        .fill(backgroundColor)
-                )
+            VStack(spacing: 2) {
+                Text(dayNumber)
+                    .font(.system(size: 16, weight: isSelected ? .bold : .regular, design: .default))
+                    .foregroundColor(textColor)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Circle()
+                            .fill(backgroundColor)
+                    )
+
+                // Event/Task indicators
+                if taskCount > 0 {
+                    HStack(spacing: 2) {
+                        Circle()
+                            .fill(indicatorColor)
+                            .frame(width: 4, height: 4)
+
+                        if taskCount > 1 {
+                            Text("\(taskCount)")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundColor(AppTheme.textSecondary)
+                        }
+                    }
+                    .frame(height: 6)
+                } else {
+                    Spacer()
+                        .frame(height: 6)
+                }
+            }
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
@@ -71,6 +94,14 @@ struct WeekDayCell: View {
             return AppTheme.accentBlue.opacity(0.1)
         } else {
             return Color.clear
+        }
+    }
+
+    private var indicatorColor: Color {
+        if hasEvents {
+            return Color.purple
+        } else {
+            return AppTheme.accentBlue
         }
     }
 }
