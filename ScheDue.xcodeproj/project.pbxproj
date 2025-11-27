@@ -98,7 +98,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 308EDE742EA5BF3700F2C509 /* Build configuration list for PBXProject "Nota" */;
+			buildConfigurationList = 308EDE742EA5BF3700F2C509 /* Build configuration list for PBXProject "ScheDue" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -328,7 +328,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		308EDE742EA5BF3700F2C509 /* Build configuration list for PBXProject "Nota" */ = {
+		308EDE742EA5BF3700F2C509 /* Build configuration list for PBXProject "ScheDue" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				308EDE842EA5BF3900F2C509 /* Debug */,

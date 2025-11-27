@@ -18,7 +18,7 @@
                BlueprintIdentifier = "308EDE782EA5BF3700F2C509"
                BuildableName = "Nota.app"
                BlueprintName = "Nota"
-               ReferencedContainer = "container:Nota.xcodeproj">
+               ReferencedContainer = "container:ScheDue.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -47,7 +47,7 @@
             BlueprintIdentifier = "308EDE782EA5BF3700F2C509"
             BuildableName = "Nota.app"
             BlueprintName = "Nota"
-            ReferencedContainer = "container:Nota.xcodeproj">
+            ReferencedContainer = "container:ScheDue.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -64,7 +64,7 @@
             BlueprintIdentifier = "308EDE782EA5BF3700F2C509"
             BuildableName = "Nota.app"
             BlueprintName = "Nota"
-            ReferencedContainer = "container:Nota.xcodeproj">
+            ReferencedContainer = "container:ScheDue.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
